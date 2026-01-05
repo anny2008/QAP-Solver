@@ -1,0 +1,7 @@
+{
+  "solver": "form3_scip",
+  "formulation": "form3",
+  "decomposition": "value_layer",
+  "time_limit": 120,
+  "threads": 8
+}

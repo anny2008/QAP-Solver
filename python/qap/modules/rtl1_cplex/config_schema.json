@@ -1,0 +1,40 @@
+{
+  "title": "RTL1 + CPLEX Configuration",
+  "description": "Schema for RTL1 formulation solved with CPLEX",
+  "type": "object",
+  "properties": {
+    "solver": {
+      "type": "string",
+      "enum": ["cplex"],
+      "description": "Solver to use"
+    },
+    "formulation": {
+      "type": "string",
+      "enum": ["rtl1"],
+      "description": "Formulation type"
+    },
+    "time_limit": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Time limit in seconds"
+    },
+    "threads": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of threads"
+    },
+    "use_heuristics": {
+      "type": "boolean",
+      "description": "Enable CPLEX heuristics"
+    },
+    "use_presolve": {
+      "type": "boolean",
+      "description": "Enable CPLEX presolve"
+    },
+    "use_cuts": {
+      "type": "boolean",
+      "description": "Enable cutting planes"
+    }
+  },
+  "required": ["solver", "formulation"]
+}

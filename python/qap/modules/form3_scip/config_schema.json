@@ -1,0 +1,45 @@
+{
+  "title": "Form3 + SCIP Configuration",
+  "description": "Schema for Form3 decomposition solved with SCIP (C++ backend)",
+  "type": "object",
+  "properties": {
+    "solver": {
+      "type": "string",
+      "enum": ["scip"],
+      "description": "Solver to use"
+    },
+    "formulation": {
+      "type": "string",
+      "enum": ["form3"],
+      "description": "Formulation type"
+    },
+    "decomposition": {
+      "type": "string",
+      "enum": ["value_only", "value_layer"],
+      "description": "Flow decomposition strategy"
+    },
+    "time_limit": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Time limit in seconds"
+    },
+    "threads": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of threads"
+    },
+    "use_presolve": {
+      "type": "boolean",
+      "description": "Enable SCIP presolve"
+    },
+    "use_cuts": {
+      "type": "boolean",
+      "description": "Enable SCIP cutting planes"
+    },
+    "scip_binary": {
+      "type": "string",
+      "description": "Path to SCIP binary (absolute or relative)"
+    }
+  },
+  "required": ["solver", "formulation"]
+}

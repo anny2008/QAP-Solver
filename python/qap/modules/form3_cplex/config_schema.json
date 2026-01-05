@@ -1,0 +1,45 @@
+{
+  "title": "Form3 + CPLEX Configuration",
+  "description": "Schema for Form3 decomposition solved with CPLEX",
+  "type": "object",
+  "properties": {
+    "solver": {
+      "type": "string",
+      "enum": ["cplex"],
+      "description": "Solver to use"
+    },
+    "formulation": {
+      "type": "string",
+      "enum": ["form3"],
+      "description": "Formulation type"
+    },
+    "decomposition": {
+      "type": "string",
+      "enum": ["value_only", "value_layer"],
+      "description": "Flow decomposition strategy"
+    },
+    "time_limit": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Time limit in seconds"
+    },
+    "threads": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of threads"
+    },
+    "use_heuristics": {
+      "type": "boolean",
+      "description": "Enable CPLEX heuristics"
+    },
+    "use_presolve": {
+      "type": "boolean",
+      "description": "Enable CPLEX presolve"
+    },
+    "use_cuts": {
+      "type": "boolean",
+      "description": "Enable cutting planes and lazy constraints"
+    }
+  },
+  "required": ["solver", "formulation"]
+}

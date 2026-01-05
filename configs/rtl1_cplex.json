@@ -1,0 +1,6 @@
+{
+  "solver": "rtl1_cplex",
+  "formulation": "rtl1",
+  "time_limit": 120,
+  "threads": 8
+}

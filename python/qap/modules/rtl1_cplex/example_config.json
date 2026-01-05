@@ -1,0 +1,9 @@
+{
+  "solver": "cplex",
+  "formulation": "rtl1",
+  "time_limit": 120.0,
+  "threads": 8,
+  "use_heuristics": true,
+  "use_presolve": true,
+  "use_cuts": true
+}

@@ -1,0 +1,10 @@
+{
+  "solver": "cplex",
+  "formulation": "form3",
+  "decomposition": "value_layer",
+  "time_limit": 120.0,
+  "threads": 8,
+  "use_heuristics": true,
+  "use_presolve": true,
+  "use_cuts": true
+}
