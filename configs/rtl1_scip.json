@@ -1,0 +1,9 @@
+{
+  "solver": "rtl1_scip",
+  "formulation": "rtl1",
+  "is_relax": false,
+  "time_limit": 120,
+  "threads": 8,
+  "log_output": false,
+  "preprocessing_symmetry": 5
+}
