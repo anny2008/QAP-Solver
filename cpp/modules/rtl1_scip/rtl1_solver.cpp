@@ -1,408 +1,346 @@
-#include "rtl1_solver.h"
-#include <iostream>
+/**
+ * RTL1 SCIP QAP Solver - Main Implementation
+ * 
+ * Implements the Reformulation-Linearization Technique (RLT1) for Quadratic Assignment Problem
+ * using SCIP 9.2.0.
+ * 
+ * Based on: QAP_New_formulation/VolQAP copy 2/src/qap_scip.cpp
+ */
+
+#include <scip/scip.h>
+#include <scip/scipdefplugins.h>
+#include <vector>
+#include <map>
+#include <cstring>
 #include <cmath>
-#include <chrono>
+#include <iostream>
+#include <fstream>
+#include <sstream>
 
-// Helper macro for SCIP error checking
-#define SCIP_CHECK(x) do { \
-    SCIP_RETCODE retcode = (x); \
-    if (retcode != SCIP_OKAY) { \
-        std::cerr << "SCIP Error: " << retcode << std::endl; \
-        return 1; \
-    } \
-} while(0)
+// Type aliases for readability
+using XVarMap = std::map<std::pair<int,int>, SCIP_VAR*>;
+using YVarMap = std::map<std::tuple<int,int,int,int>, SCIP_VAR*>;
 
-// ============================================================================
-// PUBLIC METHODS
-// ============================================================================
-
-int RTL1Solver::buildModel() {
-    // Create problem
-    SCIP_CALL_ABORT(SCIPcreateProb(scip, "QAP_RTL1", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr));
-
-    // Create variables
-    SCIP_CHECK(createXVariables());
-    SCIP_CHECK(createYVariables());
-
-    // Add constraints
-    SCIP_CHECK(addAssignmentConstraints());
-    SCIP_CHECK(addLinkingConstraints());
-    SCIP_CHECK(addSymmetryConstraints());
-
-    // Add fixed variables if any
-    if (!fixed_variables.empty()) {
-        SCIP_CHECK(addFixedVariables());
-    }
-
-    // Add warm-start if provided
-    if (!warm_start_assignment.empty()) {
-        SCIP_CHECK(addWarmStart());
-    }
-
-    // Add objective function: min Σ D[i,j] * F[u,v] * y[i,u,j,v]
-    SCIP_CALL_ABORT(SCIPsetObjsense(scip, SCIP_OBJSENSE_MINIMIZE));
-
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < n; j++) {
-            for (int u = 0; u < n; u++) {
-                for (int v = 0; v < n; v++) {
-                    auto key = std::make_tuple(i, u, j, v);
-                    if (y_vars.find(key) != y_vars.end()) {
-                        double coeff = D[i][j] * F[u][v];
-                        SCIP_CALL_ABORT(SCIPchgVarObj(scip, y_vars[key], coeff));
-                    }
-                }
+/**
+ * Read QAP instance from QAPLIB format file
+ * Format:
+ *   n
+ *   F[0,0] F[0,1] ... F[0,n-1]
+ *   ...
+ *   F[n-1,0] ... F[n-1,n-1]
+ *   D[0,0] D[0,1] ... D[0,n-1]
+ *   ...
+ *   D[n-1,0] ... D[n-1,n-1]
+ */
+struct QAPInstance {
+    int n;
+    std::vector<std::vector<double>> F;  // Flow matrix
+    std::vector<std::vector<double>> D;  // Distance matrix
+    
+    bool load(const std::string& filename) {
+        std::ifstream file(filename);
+        if (!file.is_open()) {
+            std::cerr << "Error: Cannot open file " << filename << std::endl;
+            return false;
+        }
+        
+        file >> n;
+        F.assign(n, std::vector<double>(n));
+        D.assign(n, std::vector<double>(n));
+        
+        // Read flow matrix
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < n; ++j) {
+                file >> F[i][j];
             }
         }
-    }
-
-    return 0;
-}
-
-RTL1Solver::Solution RTL1Solver::solve() {
-    auto start_time = std::chrono::high_resolution_clock::now();
-
-    Solution sol;
-    
-    // Set parameters
-    if (!config.log_output) {
-        SCIP_CALL_ABORT(SCIPsetIntParam(scip, "display/verblevel", 0));
-    }
-    
-    SCIP_CALL_ABORT(SCIPsetIntParam(scip, "parallel/nthreads", config.threads));
-    SCIP_CALL_ABORT(SCIPsetRealParam(scip, "limits/time", config.time_limit));
-    
-    // Symmetry handling
-    if (config.preprocessing_symmetry > 0) {
-        SCIP_CALL_ABORT(SCIPsetIntParam(scip, "presolving/symmetryhandling/maxperms", 
-                                       config.preprocessing_symmetry * 100));
-    }
-
-    // Build the model (objective and constraints already added)
-    // Now we can solve
-
-    // Solve
-    SCIP_CALL_ABORT(SCIPsolve(scip));
-
-    auto end_time = std::chrono::high_resolution_clock::now();
-    sol.solve_time = std::chrono::duration<double>(end_time - start_time).count();
-
-    // Get status
-    SCIP_STATUS status = SCIPgetStatus(scip);
-    sol.status = (int)status;
-
-    // Get solution
-    SCIP_SOL* best_sol = SCIPgetBestSol(scip);
-    
-    if (best_sol != nullptr) {
-        sol.feasible = SCIPsolIsPartial(scip, best_sol) == FALSE;
-        sol.assignment = extractAssignment(best_sol);
         
-        // Evaluate actual QAP objective if feasible
-        if (sol.feasible && sol.assignment.size() == n) {
-            sol.objective = evaluateObjective(sol.assignment);
-        } else {
-            // Use the RTL1 objective value
-            sol.objective = SCIPgetSolOrigObj(scip, best_sol);
+        // Read distance matrix
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < n; ++j) {
+                file >> D[i][j];
+            }
         }
+        
+        file.close();
+        return true;
     }
+};
 
-    // Get lower bound from root node
-    sol.lower_bound = SCIPgetDualbound(scip);
-    
-    if (config.log_output) {
-        printInfo();
-        if (sol.feasible) {
-            std::cout << "Best objective: " << sol.objective << std::endl;
-        }
-        std::cout << "Lower bound: " << sol.lower_bound << std::endl;
-        std::cout << "Solve time: " << sol.solve_time << "s" << std::endl;
-    }
-
-    return sol;
-}
-
-double RTL1Solver::evaluateObjective(const std::vector<int>& assignment) const {
-    double obj = 0.0;
-    
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < n; j++) {
-            int u = assignment[i];
-            int v = assignment[j];
-            obj += D[i][j] * F[u][v];
-        }
-    }
-    
-    return obj;
-}
-
-void RTL1Solver::printInfo() const {
-    std::cout << "\n=== RTL1 SCIP Solver Info ===" << std::endl;
-    std::cout << "Problem size: " << n << std::endl;
-    std::cout << "Relaxation: " << (config.is_relax ? "Yes" : "No") << std::endl;
-    std::cout << "Time limit: " << config.time_limit << "s" << std::endl;
-    std::cout << "Threads: " << config.threads << std::endl;
-}
-
-// ============================================================================
-// PRIVATE METHODS
-// ============================================================================
-
-int RTL1Solver::createXVariables() {
-    std::string var_type = config.is_relax ? "C" : "B";  // Continuous or Binary
-    
-    for (int i = 0; i < n; i++) {
-        for (int u = 0; u < n; u++) {
-            SCIP_VAR* var;
+/**
+ * Create RLT1 x variables: x[i,u] ∈ {0,1} for facility i at location u
+ */
+void create_x_variables(SCIP* scip, int n, XVarMap& x) {
+    for (int i = 0; i < n; ++i) {
+        for (int u = 0; u < n; ++u) {
+            SCIP_VAR* var = nullptr;
             char varname[256];
-            snprintf(varname, sizeof(varname), "x_%d_%d", i, u);
+            snprintf(varname, 255, "x_%d_%d", i, u);
             
-            if (config.is_relax) {
-                SCIP_CALL_ABORT(SCIPcreateVarBasic(scip, &var, varname, 
-                                                   0.0, 1.0, 0.0, SCIP_VARTYPE_CONTINUOUS));
-            } else {
-                SCIP_CALL_ABORT(SCIPcreateVarBasic(scip, &var, varname, 
-                                                   0.0, 1.0, 0.0, SCIP_VARTYPE_BINARY));
-            }
+            SCIP_CALL_ABORT(SCIPcreateVarBasic(scip, &var, varname, 0.0, 1.0, 0.0, SCIP_VARTYPE_BINARY));
             SCIP_CALL_ABORT(SCIPaddVar(scip, var));
-            x_vars[std::make_pair(i, u)] = var;
+            x[{i, u}] = var;
         }
     }
-    
-    return 0;
 }
 
-int RTL1Solver::createYVariables() {
-    std::string var_type = config.is_relax ? "C" : "B";
-    
-    for (int i = 0; i < n; i++) {
-        for (int u = 0; u < n; u++) {
-            for (int j = 0; j < n; j++) {
-                for (int v = 0; v < n; v++) {
-                    SCIP_VAR* var;
+/**
+ * Create RLT1 y variables: y[i,u,j,v] ∈ [0,1] (continuous) for linearization
+ */
+void create_y_variables(SCIP* scip, int n, YVarMap& y) {
+    for (int i = 0; i < n; ++i) {
+        for (int u = 0; u < n; ++u) {
+            for (int j = 0; j < n; ++j) {
+                for (int v = 0; v < n; ++v) {
+                    SCIP_VAR* var = nullptr;
                     char varname[256];
-                    snprintf(varname, sizeof(varname), "y_%d_%d_%d_%d", i, u, j, v);
+                    snprintf(varname, 255, "y_%d_%d_%d_%d", i, u, j, v);
                     
-                    if (config.is_relax) {
-                        SCIP_CALL_ABORT(SCIPcreateVarBasic(scip, &var, varname,
-                                                           0.0, 1.0, 0.0, SCIP_VARTYPE_CONTINUOUS));
-                    } else {
-                        SCIP_CALL_ABORT(SCIPcreateVarBasic(scip, &var, varname,
-                                                           0.0, 1.0, 0.0, SCIP_VARTYPE_BINARY));
-                    }
+                    // CONTINUOUS variables for RLT1 linearization
+                    SCIP_CALL_ABORT(SCIPcreateVarBasic(scip, &var, varname, 0.0, 1.0, 0.0, SCIP_VARTYPE_CONTINUOUS));
                     SCIP_CALL_ABORT(SCIPaddVar(scip, var));
-                    y_vars[std::make_tuple(i, u, j, v)] = var;
+                    y[{i, u, j, v}] = var;
                 }
             }
         }
     }
-    
-    return 0;
 }
 
-int RTL1Solver::addAssignmentConstraints() {
-    // Each facility assigned to exactly one location
-    for (int i = 0; i < n; i++) {
-        SCIP_CONS* cons;
+/**
+ * Add assignment constraints:
+ * - Each facility to exactly one location: Σ_u x[i,u] = 1
+ * - Each location to exactly one facility: Σ_i x[i,u] = 1
+ */
+void add_assignment_constraints(SCIP* scip, int n, const XVarMap& x) {
+    // Facility constraints: each facility assigned to one location
+    for (int i = 0; i < n; ++i) {
+        SCIP_CONS* cons = nullptr;
         char consname[256];
-        snprintf(consname, sizeof(consname), "assign_fac_%d", i);
+        snprintf(consname, 255, "assign_fac_%d", i);
         
-        std::vector<SCIP_VAR*> vars;
-        std::vector<SCIP_Real> coefs;
-        
-        for (int u = 0; u < n; u++) {
-            vars.push_back(x_vars[std::make_pair(i, u)]);
-            coefs.push_back(1.0);
+        SCIP_CALL_ABORT(SCIPcreateConsBasicLinear(scip, &cons, consname, 0, nullptr, nullptr, 1.0, 1.0));
+        for (int u = 0; u < n; ++u) {
+            SCIP_CALL_ABORT(SCIPaddCoefLinear(scip, cons, x.at({i, u}), 1.0));
         }
-        
-        SCIP_CALL_ABORT(SCIPcreateConsLinear(scip, &cons, consname, 
-                                            vars.size(), vars.data(), coefs.data(),
-                                            1.0, 1.0, TRUE, TRUE, TRUE, FALSE, TRUE, FALSE, FALSE, FALSE, FALSE, FALSE));
         SCIP_CALL_ABORT(SCIPaddCons(scip, cons));
         SCIP_CALL_ABORT(SCIPreleaseCons(scip, &cons));
     }
     
-    // Each location assigned to exactly one facility
-    for (int u = 0; u < n; u++) {
-        SCIP_CONS* cons;
+    // Location constraints: each location gets one facility
+    for (int u = 0; u < n; ++u) {
+        SCIP_CONS* cons = nullptr;
         char consname[256];
-        snprintf(consname, sizeof(consname), "assign_loc_%d", u);
+        snprintf(consname, 255, "assign_loc_%d", u);
         
-        std::vector<SCIP_VAR*> vars;
-        std::vector<SCIP_Real> coefs;
-        
-        for (int i = 0; i < n; i++) {
-            vars.push_back(x_vars[std::make_pair(i, u)]);
-            coefs.push_back(1.0);
+        SCIP_CALL_ABORT(SCIPcreateConsBasicLinear(scip, &cons, consname, 0, nullptr, nullptr, 1.0, 1.0));
+        for (int i = 0; i < n; ++i) {
+            SCIP_CALL_ABORT(SCIPaddCoefLinear(scip, cons, x.at({i, u}), 1.0));
         }
-        
-        SCIP_CALL_ABORT(SCIPcreateConsLinear(scip, &cons, consname,
-                                            vars.size(), vars.data(), coefs.data(),
-                                            1.0, 1.0, TRUE, TRUE, TRUE, FALSE, TRUE, FALSE, FALSE, FALSE, FALSE, FALSE));
         SCIP_CALL_ABORT(SCIPaddCons(scip, cons));
         SCIP_CALL_ABORT(SCIPreleaseCons(scip, &cons));
     }
-    
-    return 0;
 }
 
-int RTL1Solver::addLinkingConstraints() {
-    // For each (i,u,v), sum over j of y[i,u,j,v] = x[i,u]
-    for (int i = 0; i < n; i++) {
-        for (int u = 0; u < n; u++) {
-            for (int v = 0; v < n; v++) {
-                std::vector<SCIP_VAR*> vars;
-                std::vector<SCIP_Real> coefs;
-                
-                // Σ_j y[i,u,j,v]
-                for (int j = 0; j < n; j++) {
-                    vars.push_back(y_vars[std::make_tuple(i, u, j, v)]);
-                    coefs.push_back(1.0);
-                }
-                
-                // - x[i,u]
-                vars.push_back(x_vars[std::make_pair(i, u)]);
-                coefs.push_back(-1.0);
-                
-                SCIP_CONS* cons;
+/**
+ * Add RLT1 linking constraints:
+ * - Σ_v y[i,u,j,v] = x[i,u]  (for all i,u,j)
+ * - Σ_j y[i,u,j,v] = x[i,u]  (for all i,u,v)
+ * - y[i,u,j,v] = y[j,v,i,u]  (symmetry)
+ */
+void add_rlt1_constraints(SCIP* scip, int n, const XVarMap& x, const YVarMap& y) {
+    // Link1: Σ_j y[i,u,j,v] = x[i,u]
+    for (int i = 0; i < n; ++i) {
+        for (int u = 0; u < n; ++u) {
+            for (int v = 0; v < n; ++v) {
+                SCIP_CONS* cons = nullptr;
                 char consname[256];
-                snprintf(consname, sizeof(consname), "link_iu_jv_%d_%d_%d", i, u, v);
+                snprintf(consname, 255, "link1_%d_%d_%d", i, u, v);
                 
-                SCIP_CALL_ABORT(SCIPcreateConsLinear(scip, &cons, consname,
-                                                    vars.size(), vars.data(), coefs.data(),
-                                                    -SCIPinfinity(scip), 0.0, TRUE, TRUE, TRUE, FALSE, TRUE, FALSE, FALSE, FALSE, FALSE, FALSE));
+                SCIP_CALL_ABORT(SCIPcreateConsBasicLinear(scip, &cons, consname, 0, nullptr, nullptr, 0.0, 0.0));
+                for (int j = 0; j < n; ++j) {
+                    SCIP_CALL_ABORT(SCIPaddCoefLinear(scip, cons, y.at({i, u, j, v}), 1.0));
+                }
+                SCIP_CALL_ABORT(SCIPaddCoefLinear(scip, cons, x.at({i, u}), -1.0));
                 SCIP_CALL_ABORT(SCIPaddCons(scip, cons));
                 SCIP_CALL_ABORT(SCIPreleaseCons(scip, &cons));
             }
         }
     }
     
-    // For each (i,u,j), sum over v of y[i,u,j,v] = x[i,u]
-    for (int i = 0; i < n; i++) {
-        for (int u = 0; u < n; u++) {
-            for (int j = 0; j < n; j++) {
-                std::vector<SCIP_VAR*> vars;
-                std::vector<SCIP_Real> coefs;
-                
-                // Σ_v y[i,u,j,v]
-                for (int v = 0; v < n; v++) {
-                    vars.push_back(y_vars[std::make_tuple(i, u, j, v)]);
-                    coefs.push_back(1.0);
-                }
-                
-                // - x[i,u]
-                vars.push_back(x_vars[std::make_pair(i, u)]);
-                coefs.push_back(-1.0);
-                
-                SCIP_CONS* cons;
+    // Link2: Σ_v y[i,u,j,v] = x[i,u]
+    for (int i = 0; i < n; ++i) {
+        for (int u = 0; u < n; ++u) {
+            for (int j = 0; j < n; ++j) {
+                SCIP_CONS* cons = nullptr;
                 char consname[256];
-                snprintf(consname, sizeof(consname), "link_iu_jv2_%d_%d_%d", i, u, j);
+                snprintf(consname, 255, "link2_%d_%d_%d", i, u, j);
                 
-                SCIP_CALL_ABORT(SCIPcreateConsLinear(scip, &cons, consname,
-                                                    vars.size(), vars.data(), coefs.data(),
-                                                    -SCIPinfinity(scip), 0.0, TRUE, TRUE, TRUE, FALSE, TRUE, FALSE, FALSE, FALSE, FALSE, FALSE));
+                SCIP_CALL_ABORT(SCIPcreateConsBasicLinear(scip, &cons, consname, 0, nullptr, nullptr, 0.0, 0.0));
+                for (int v = 0; v < n; ++v) {
+                    SCIP_CALL_ABORT(SCIPaddCoefLinear(scip, cons, y.at({i, u, j, v}), 1.0));
+                }
+                SCIP_CALL_ABORT(SCIPaddCoefLinear(scip, cons, x.at({i, u}), -1.0));
                 SCIP_CALL_ABORT(SCIPaddCons(scip, cons));
                 SCIP_CALL_ABORT(SCIPreleaseCons(scip, &cons));
             }
         }
     }
     
-    return 0;
-}
-
-int RTL1Solver::addSymmetryConstraints() {
-    // y[i,u,j,v] == y[j,v,i,u]
-    for (int i = 0; i < n; i++) {
-        for (int u = 0; u < n; u++) {
-            for (int j = i; j < n; j++) {
-                for (int v = (i == j ? u : 0); v < n; v++) {
-                    if (i == j && u == v) continue;
-                    
-                    std::vector<SCIP_VAR*> vars;
-                    std::vector<SCIP_Real> coefs;
-                    
-                    vars.push_back(y_vars[std::make_tuple(i, u, j, v)]);
-                    coefs.push_back(1.0);
-                    
-                    vars.push_back(y_vars[std::make_tuple(j, v, i, u)]);
-                    coefs.push_back(-1.0);
-                    
-                    SCIP_CONS* cons;
+    // Link3 (Symmetry): y[i,u,j,v] = y[j,v,i,u]
+    for (int i = 0; i < n; ++i) {
+        for (int u = 0; u < n; ++u) {
+            for (int j = 0; j < n; ++j) {
+                for (int v = 0; v < n; ++v) {
+                    SCIP_CONS* cons = nullptr;
                     char consname[256];
-                    snprintf(consname, sizeof(consname), "sym_%d_%d_%d_%d", i, u, j, v);
+                    snprintf(consname, 255, "link3_%d_%d_%d_%d", i, u, j, v);
                     
-                    SCIP_CALL_ABORT(SCIPcreateConsLinear(scip, &cons, consname,
-                                                        vars.size(), vars.data(), coefs.data(),
-                                                        0.0, 0.0, TRUE, TRUE, TRUE, FALSE, TRUE, FALSE, FALSE, FALSE, FALSE, FALSE));
+                    SCIP_CALL_ABORT(SCIPcreateConsBasicLinear(scip, &cons, consname, 0, nullptr, nullptr, 0.0, 0.0));
+                    SCIP_CALL_ABORT(SCIPaddCoefLinear(scip, cons, y.at({i, u, j, v}), 1.0));
+                    SCIP_CALL_ABORT(SCIPaddCoefLinear(scip, cons, y.at({j, v, i, u}), -1.0));
                     SCIP_CALL_ABORT(SCIPaddCons(scip, cons));
                     SCIP_CALL_ABORT(SCIPreleaseCons(scip, &cons));
                 }
             }
         }
     }
-    
-    return 0;
 }
 
-int RTL1Solver::addFixedVariables() {
-    for (const auto& [i, u] : fixed_variables) {
-        SCIP_CALL_ABORT(SCIPchgVarLbGlobal(scip, x_vars[std::make_pair(i, u)], 1.0));
-        SCIP_CALL_ABORT(SCIPchgVarUbGlobal(scip, x_vars[std::make_pair(i, u)], 1.0));
-    }
-    
-    return 0;
-}
-
-int RTL1Solver::addWarmStart() {
-    // Create a partial solution with warm-start values
-    SCIP_SOL* partial_sol = nullptr;
-    SCIP_CALL_ABORT(SCIPcreatePartialSol(scip, &partial_sol, nullptr));
-    
-    // Set x variables from warm-start
-    std::vector<SCIP_VAR*> vars;
-    std::vector<double> values;
-    
-    for (const auto& [key, value] : warm_start_assignment) {
-        auto [i, u] = key;
-        vars.push_back(x_vars[std::make_pair(i, u)]);
-        values.push_back(value);
-    }
-    
-    if (!vars.empty()) {
-        SCIP_CALL_ABORT(SCIPsetSolVals(scip, partial_sol, vars.size(), 
-                                       vars.data(), values.data()));
-    }
-    
-    // Try to add the solution
-    SCIP_Bool success = FALSE;
-    SCIP_CALL_ABORT(SCIPtrySol(scip, partial_sol, FALSE, FALSE, TRUE, TRUE, TRUE, &success));
-    
-    if (config.log_output && success) {
-        std::cout << "Successfully added warm-start solution" << std::endl;
-    }
-    
-    SCIP_CALL_ABORT(SCIPfreeSol(scip, &partial_sol));
-    
-    return 0;
-}
-
-std::vector<int> RTL1Solver::extractAssignment(SCIP_SOL* sol) const {
-    std::vector<int> assignment(n, -1);
-    
-    for (int i = 0; i < n; i++) {
-        double best_val = -1.0;
-        int best_u = -1;
-        
-        for (int u = 0; u < n; u++) {
-            double val = SCIPgetSolVal(scip, sol, x_vars.at(std::make_pair(i, u)));
-            if (val > best_val) {
-                best_val = val;
-                best_u = u;
+/**
+ * Set objective function: min Σ F[i,j] * D[u,v] * y[i,u,j,v]
+ */
+void set_objective(SCIP* scip, int n, const QAPInstance& qap, const YVarMap& y) {
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j) {
+            for (int u = 0; u < n; ++u) {
+                for (int v = 0; v < n; ++v) {
+                    double coeff = qap.F[i][j] * qap.D[u][v];
+                    SCIP_CALL_ABORT(SCIPchgVarObj(scip, y.at({i, u, j, v}), coeff));
+                }
             }
         }
-        
-        assignment[i] = best_u;
+    }
+}
+
+/**
+ * Extract solution from SCIP
+ */
+void extract_solution(SCIP* scip, int n, const XVarMap& x, const QAPInstance& qap, 
+                      std::vector<int>& assignment, double& objective) {
+    SCIP_SOL* bestsol = SCIPgetBestSol(scip);
+    if (bestsol == nullptr) {
+        std::cout << "No solution found" << std::endl;
+        return;
     }
     
-    return assignment;
+    assignment.resize(n);
+    objective = 0.0;
+    
+    // Extract assignment from x variables
+    for (int i = 0; i < n; ++i) {
+        for (int u = 0; u < n; ++u) {
+            double val = SCIPgetSolVal(scip, bestsol, x.at({i, u}));
+            if (val > 0.9) {  // Binary variable, close to 1
+                assignment[i] = u;
+                break;
+            }
+        }
+    }
+    
+    // Compute objective from assignment
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j) {
+            objective += qap.F[i][j] * qap.D[assignment[i]][assignment[j]];
+        }
+    }
+}
+
+/**
+ * Main solver function
+ */
+int solve_qap_rtl1(const std::string& instance_file, double time_limit, 
+                   std::vector<int>& assignment, double& objective, double& lower_bound) {
+    // Load instance
+    QAPInstance qap;
+    if (!qap.load(instance_file)) {
+        return 1;
+    }
+    
+    int n = qap.n;
+    std::cout << "Solving QAP instance with n=" << n << std::endl;
+    
+    // Create SCIP environment
+    SCIP* scip = nullptr;
+    SCIP_CALL_ABORT(SCIPcreate(&scip));
+    SCIP_CALL_ABORT(SCIPincludeDefaultPlugins(scip));
+    SCIP_CALL_ABORT(SCIPcreateProb(scip, "QAP_RTL1", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr));
+    
+    // Create variables
+    XVarMap x;
+    YVarMap y;
+    create_x_variables(scip, n, x);
+    create_y_variables(scip, n, y);
+    
+    // Add constraints
+    add_assignment_constraints(scip, n, x);
+    add_rlt1_constraints(scip, n, x, y);
+    
+    // Set objective
+    set_objective(scip, n, qap, y);
+    
+    // Configure solver
+    SCIP_CALL_ABORT(SCIPsetRealParam(scip, "limits/time", time_limit));
+    SCIP_CALL_ABORT(SCIPsetIntParam(scip, "presolving/maxrounds", 1));
+    
+    // Solve
+    std::cout << "Starting optimization..." << std::endl;
+    SCIP_CALL_ABORT(SCIPsolve(scip));
+    
+    // Get results
+    extract_solution(scip, n, x, qap, assignment, objective);
+    lower_bound = SCIPgetDualbound(scip);
+    
+    // Print status
+    SCIP_STATUS status = SCIPgetStatus(scip);
+    std::cout << "SCIP Status: " << (int)status << std::endl;
+    std::cout << "Objective: " << objective << std::endl;
+    std::cout << "Lower Bound: " << lower_bound << std::endl;
+    
+    // Cleanup
+    SCIP_CALL_ABORT(SCIPfree(&scip));
+    
+    return 0;
+}
+
+/**
+ * Command line interface
+ */
+int main(int argc, char** argv) {
+    if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " <instance.dat> [time_limit]" << std::endl;
+        return 1;
+    }
+    
+    std::string instance_file = argv[1];
+    double time_limit = 3600.0;  // Default 1 hour
+    
+    if (argc > 2) {
+        time_limit = std::stod(argv[2]);
+    }
+    
+    std::vector<int> assignment;
+    double objective, lower_bound;
+    
+    int result = solve_qap_rtl1(instance_file, time_limit, assignment, objective, lower_bound);
+    
+    if (result == 0 && !assignment.empty()) {
+        std::cout << "\nFinal Assignment: [";
+        for (int i = 0; i < (int)assignment.size(); ++i) {
+            if (i > 0) std::cout << ", ";
+            std::cout << assignment[i];
+        }
+        std::cout << "]" << std::endl;
+    }
+    
+    return result;
 }

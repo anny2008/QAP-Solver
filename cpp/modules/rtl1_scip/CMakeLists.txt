@@ -1,34 +1,25 @@
-cmake_minimum_required(VERSION 3.10)
-project(rtl1_scip)
+cmake_minimum_required(VERSION 3.15)
+project(RTL1_SCIP_Solver)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Find SCIP library
-# Update the path based on your SCIP installation
-set(SCIP_DIR "/home/local.isima.fr/antran/UFF/scip-9.2.0")
-find_package(SCIP REQUIRED PATHS ${SCIP_DIR})
+# Find SCIP
+find_package(SCIP REQUIRED CONFIG)
 
 # Include SCIP headers
 include_directories(${SCIP_INCLUDE_DIRS})
-include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
-# Create shared library for Python ctypes
-add_library(rtl1_scip_shared SHARED
-    rtl1_solver.cpp
-    rtl1_solver_c.cpp
-)
+# Add executable
+add_executable(rtl1_solver rtl1_solver.cpp)
 
-# Link SCIP library
-target_link_libraries(rtl1_scip_shared PRIVATE ${SCIP_LIBRARIES})
+# Link SCIP libraries - use full path to force static linking where possible
+target_link_directories(rtl1_solver PRIVATE /home/local.isima.fr/antran/UFF/SCIPOptSuite-9.2.0-Linux/lib)
+target_link_libraries(rtl1_solver /home/local.isima.fr/antran/UFF/SCIPOptSuite-9.2.0-Linux/lib/libscip.so)
+target_link_libraries(rtl1_solver /home/local.isima.fr/antran/UFF/SCIPOptSuite-9.2.0-Linux/lib/libsoplexshared.so)
+target_link_libraries(rtl1_solver pthread dl)
 
-# Set output directory
-set_target_properties(rtl1_scip_shared PROPERTIES
-    OUTPUT_NAME "rtl1_scip"
-    PREFIX "lib"
-)
-
-# Installation
-install(TARGETS rtl1_scip_shared
-        LIBRARY DESTINATION lib
-        RUNTIME DESTINATION bin)
+# Print info
+message(STATUS "SCIP found at: ${SCIP_DIR}")
+message(STATUS "SCIP libraries: ${SCIP_LIBRARIES}")
+message(STATUS "SCIP include dirs: ${SCIP_INCLUDE_DIRS}")
