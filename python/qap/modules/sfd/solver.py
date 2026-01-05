@@ -9,6 +9,10 @@ References:
     Uses value_layer or value_only decomposition strategies
 """
 
+# Temporary compatibility shim for NumPy 2.x + docplex
+import numpy as np
+np.float_ = np.float64
+
 import time
 import json
 import numpy as np
