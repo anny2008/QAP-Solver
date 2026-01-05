@@ -1,0 +1,63 @@
+==================================================
+RTL1 Volume Algorithm Solver for QAP
+==================================================
+Instance: /home/local.isima.fr/antran/UFF/QAP_New_formulation/data/QAPLIB/nug12.dat
+Time limit: 600 seconds
+Threads: 8
+==================================================
+Problem size: n = 12
+
+Starting Volume algorithm...
+readjusting target: new target = 10.000000                              iter=0 time=00:00:00 L=0.000000 P=0.000000 infeas=0.001890 asc=1804.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   
+ **** decreasing lamda to 0.067 *****
+
+
+ **** decreasing lamda to 0.04489 *****
+
+
+ **** decreasing lamda to 0.0300763 *****
+
+
+ **** decreasing lamda to 0.0201511 *****
+
+
+ **** decreasing lamda to 0.0135013 *****
+
+decreasing alpha to 0.660000                                         iter=100 time=00:00:00 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   
+ **** decreasing lamda to 0.00904584 *****
+
+
+ **** decreasing lamda to 0.00606071 *****
+
+decreasing alpha to 0.435600                                         
+ **** decreasing lamda to 0.00406068 *****
+
+
+ **** decreasing lamda to 0.00272065 *****
+
+
+ **** decreasing lamda to 0.00182284 *****
+
+decreasing alpha to 0.287496                                         iter=200 time=00:00:00 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   
+ **** decreasing lamda to 0.0012213 *****
+
+
+ **** decreasing lamda to 0.000818272 *****
+
+decreasing alpha to 0.189747                                         
+ **** decreasing lamda to 0.000548242 *****
+
+
+ **** decreasing lamda to 0.000367322 *****
+
+decreasing alpha to 0.125233                                         iter=300 time=00:00:00 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   decreasing alpha to 0.082654                                         decreasing alpha to 0.054552                                         iter=400 time=00:00:00 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   decreasing alpha to 0.036004                                         decreasing alpha to 0.023763                                         iter=500 time=00:00:00 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   decreasing alpha to 0.015683                                         decreasing alpha to 0.010351                                         iter=600 time=00:00:00 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   decreasing alpha to 0.006832                                         decreasing alpha to 0.004509                                         iter=700 time=00:00:00 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   decreasing alpha to 0.002976                                         decreasing alpha to 0.001964                                         iter=800 time=00:00:00 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   decreasing alpha to 0.001296                                         decreasing alpha to 0.000856                                         iter=900 time=00:00:00 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=1000 time=00:00:00 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=1100 time=00:00:00 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=1200 time=00:00:00 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=1300 time=00:00:00 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=1400 time=00:00:00 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=1500 time=00:00:01 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=1600 time=00:00:01 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=1700 time=00:00:01 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=1800 time=00:00:01 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=1900 time=00:00:01 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=2000 time=00:00:01 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=2100 time=00:00:01 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=2200 time=00:00:01 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=2300 time=00:00:01 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=2400 time=00:00:01 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=2500 time=00:00:01 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=2600 time=00:00:01 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=2700 time=00:00:01 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=2800 time=00:00:01 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=2900 time=00:00:02 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=3000 time=00:00:02 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=3100 time=00:00:02 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=3200 time=00:00:02 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=3300 time=00:00:02 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=3400 time=00:00:02 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=3500 time=00:00:02 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=3600 time=00:00:02 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=3700 time=00:00:02 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=3800 time=00:00:02 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=3900 time=00:00:02 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=4000 time=00:00:02 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=4100 time=00:00:02 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=4200 time=00:00:02 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=4300 time=00:00:02 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=4400 time=00:00:03 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=4500 time=00:00:03 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=4600 time=00:00:03 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=4700 time=00:00:03 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=4800 time=00:00:03 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=4900 time=00:00:03 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=5000 time=00:00:03 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=5100 time=00:00:03 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=5200 time=00:00:03 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=5300 time=00:00:03 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=5400 time=00:00:03 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=5500 time=00:00:03 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=5600 time=00:00:03 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=5700 time=00:00:03 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=5800 time=00:00:04 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=5900 time=00:00:04 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=6000 time=00:00:04 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   iter=6001 time=00:00:04 L=0.000000 P=0.000000 infeas=0.001989 asc=1998.000000 vmax=11.000000 P-vu=0.000000 xrc=0.000000   
+
+==================================================
+Volume Algorithm Complete
+==================================================
+Status: Error
+Lower bound: 0.000000
+Time: 4.21 seconds
+Primal objective: 0.00
+Solution saved to: nug12_volume.sln
+==================================================
