@@ -17,10 +17,12 @@ from pyscipopt import Model, quicksum
 # Handle imports for different calling contexts
 try:
     from python.qap.core import Problem, Solution, write_result
+    from python.qap.core.solution_io import read_warmstart
 except ModuleNotFoundError:
     import sys
     sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
     from qap.core import Problem, Solution, write_result
+    from qap.core.solution_io import read_warmstart
 
 
 class RTL1SCIPSolver:
@@ -377,6 +379,18 @@ class RTL1SCIPSolver:
             write_result(solution, output_path)
 
         return solution
+
+    def load_warmstart_from_file(self, filepath: str) -> Dict[Tuple[int, int], float]:
+        """
+        Load warm-start solution from QAPLIB format file.
+        
+        Args:
+            filepath (str): Path to .sln file
+            
+        Returns:
+            dict: {(i, u): 1.0} format for warm-starting
+        """
+        return read_warmstart(filepath)
 
     def benchmark_instance(self, instance_path: str) -> Dict[str, Any]:
         """
