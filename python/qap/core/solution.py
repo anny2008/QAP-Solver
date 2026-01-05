@@ -35,6 +35,17 @@ class Solution:
         self.lower_bound = lower_bound
         self.time = time
 
+    def n(self) -> int:
+        """
+        Get problem size from assignment.
+
+        Returns:
+            int: Problem size (length of assignment), or 0 if no assignment
+        """
+        if self.assignment is None:
+            return 0
+        return len(self.assignment)
+
     @property
     def gap(self) -> Optional[float]:
         """

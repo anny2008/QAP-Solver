@@ -45,22 +45,31 @@ class Problem:
             Problem: The loaded problem instance
         """
         filepath = Path(filepath)
-        with open(filepath, 'r') as f:
-            lines = [line.strip() for line in f.readlines() if line.strip()]
+        
+        # Read file and parse all tokens
+        content = filepath.read_text().strip()
+        tokens = content.split()
 
-        # First line is problem size
-        n = int(lines[0])
+        # First token is problem size
+        n = int(tokens[0])
 
-        # Read flow matrix (n lines)
+        # Next n*n tokens are flow matrix
         F = []
-        for i in range(1, n + 1):
-            row = list(map(float, lines[i].split()))
+        idx = 1
+        for i in range(n):
+            row = []
+            for j in range(n):
+                row.append(float(tokens[idx]))
+                idx += 1
             F.append(row)
 
-        # Read distance matrix (next n lines)
+        # Next n*n tokens are distance matrix
         D = []
-        for i in range(n + 1, 2 * n + 1):
-            row = list(map(float, lines[i].split()))
+        for i in range(n):
+            row = []
+            for j in range(n):
+                row.append(float(tokens[idx]))
+                idx += 1
             D.append(row)
 
         return cls(n, F, D)

@@ -1,0 +1,39 @@
+# Testing and debugging files (to be organized later)
+test_*.py
+debug_*.py
+batch_test_*.py
+analyze_*.py
+*_test.py
+
+# Test results and outputs
+results/
+TESTING_SUMMARY.md
+WARMSTART_ANALYSIS.md
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+.venv
+venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+build/
+dist/
+*.egg-info/
