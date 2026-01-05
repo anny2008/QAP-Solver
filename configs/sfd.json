@@ -1,0 +1,11 @@
+{
+  "solver": "sfd",
+  "formulation": "sfd",
+  "decomposition": "value_layer",
+  "use_cuts": true,
+  "time_limit": 3600,
+  "threads": 8,
+  "log_output": false,
+  "is_relax": false,
+  "description": "Subgraph Flow Decomposition solver for QAP using CPLEX Python"
+}
