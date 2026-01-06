@@ -19,9 +19,9 @@ from typing import Dict, Any, Optional, Tuple, List
 
 from docplex.mp.model import Model
 
-from python.qap.core import Problem, Solution
-from python.qap.core.io import write_result
-from python.qap.core.solution_io import read_warmstart
+from qap.core import Problem, Solution
+from qap.core.io import write_result
+from qap.core.solution_io import read_warmstart
 
 
 class RTL1CPLEXSolver:

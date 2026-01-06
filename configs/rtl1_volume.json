@@ -1,0 +1,11 @@
+{
+  "solver": "rtl1_volume",
+  "formulation": "rtl1",
+  "instance": "/home/local.isima.fr/antran/UFF/QAP_New_formulation/data/QAPLIB/nug12.dat",
+  "time_limit": 60,
+  "threads": 8,
+  "log_output": true,
+  "save_dual": "/home/local.isima.fr/antran/UFF/QAP-Solver/results/nug12_dual.bin",
+  "load_dual": "/home/local.isima.fr/antran/UFF/QAP-Solver/results/nug12_dual.bin",
+  "description": "RTL1 Volume Algorithm solver using Lagrangian relaxation for lower bounds"
+}

@@ -15,6 +15,8 @@
 #pragma once
 
 #include <vector>
+#include <map>
+#include <utility>
 #include <fstream>
 #include <sstream>
 #include <string>

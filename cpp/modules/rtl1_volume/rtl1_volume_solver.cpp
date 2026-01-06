@@ -23,7 +23,91 @@
 #include <omp.h>
 
 #include "VolVolume.hpp"
-#include "qap_solution_io.hpp"
+#include "../../core/problem.h"
+#include "../../include/qap_solution_io.hpp"
+
+// Summary of primal violations for reporting at end of run
+struct PrimalViolationSummary {
+    double max_abs = 0.0;
+    double avg_abs = 0.0;
+    double assignment_max = 0.0;
+    double assignment_avg = 0.0;
+    double link_max = 0.0;
+    double link_avg = 0.0;
+    int n = 0;
+};
+
+static PrimalViolationSummary compute_primal_violation_summary(const VOL_dvector &psol, int n) {
+    PrimalViolationSummary summary;
+    summary.n = n;
+
+    auto idx_x = [n](int i, int u) { return i * n + u; };
+    auto idx_y = [n](int i, int u, int j, int v) {
+        return n * n + i * n * n * n + u * n * n + j * n + v;
+    };
+
+    double total_abs = 0.0;
+    long long total_cnt = 0;
+
+    // Assignment: sum_i x[i,u] = 1 for all u
+    double assign_abs_sum = 0.0;
+    long long assign_cnt = 0;
+    for (int u = 0; u < n; ++u) {
+        double residual = 1.0;
+        for (int i = 0; i < n; ++i) {
+            residual -= psol[idx_x(i, u)];
+        }
+        double a = std::abs(residual);
+        summary.assignment_max = std::max(summary.assignment_max, a);
+        assign_abs_sum += a;
+        ++assign_cnt;
+    }
+    summary.assignment_avg = assign_cnt > 0 ? assign_abs_sum / assign_cnt : 0.0;
+
+    // Linking: sum_v y[i,u,j,v] = x[i,u] for all i,u,j
+    double link_abs_sum = 0.0;
+    long long link_cnt = 0;
+    for (int i = 0; i < n; ++i) {
+        for (int u = 0; u < n; ++u) {
+            for (int j = 0; j < n; ++j) {
+                double residual = psol[idx_x(i, u)];
+                for (int v = 0; v < n; ++v) {
+                    residual -= psol[idx_y(i, u, j, v)];
+                }
+                double a = std::abs(residual);
+                summary.link_max = std::max(summary.link_max, a);
+                link_abs_sum += a;
+                ++link_cnt;
+            }
+        }
+    }
+    summary.link_avg = link_cnt > 0 ? link_abs_sum / link_cnt : 0.0;
+
+    // Symmetry: y[i,u,j,v] = y[j,v,i,u] for all i,u,j,v
+    double sym_abs_sum = 0.0;
+    long long sym_cnt = 0;
+    for (int i = 0; i < n; ++i) {
+        for (int u = 0; u < n; ++u) {
+            for (int j = 0; j < n; ++j) {
+                for (int v = 0; v < n; ++v) {
+                    double residual = psol[idx_y(i, u, j, v)] - psol[idx_y(j, v, i, u)];
+                    double a = std::abs(residual);
+                    sym_abs_sum += a;
+                    ++sym_cnt;
+                    summary.max_abs = std::max(summary.max_abs, a);
+                }
+            }
+        }
+    }
+
+    total_abs = assign_abs_sum + link_abs_sum + sym_abs_sum;
+    total_cnt = assign_cnt + link_cnt + sym_cnt;
+    summary.max_abs = std::max(summary.max_abs, summary.assignment_max);
+    summary.max_abs = std::max(summary.max_abs, summary.link_max);
+    summary.avg_abs = total_cnt > 0 ? total_abs / static_cast<double>(total_cnt) : 0.0;
+
+    return summary;
+}
 
 // Macro definitions for cleaner indexing
 #define mu(u) (pi[u])
@@ -36,53 +120,11 @@
 #define vio_theta(i, u, j) (vio[n + n * n * n * n + (i) * n * n + (u) * n + (j)])
 
 /**
- * QAP Problem Data Structure
- */
-struct QAPData {
-    int n;                        // Problem size
-    std::vector<double> flows;    // Flow matrix (linearized, n*n)
-    std::vector<double> distances;// Distance matrix (linearized, n*n)
-    
-    double flow(int i, int j) const { return flows[i * n + j]; }
-    double dist(int u, int v) const { return distances[u * n + v]; }
-};
-
-/**
- * Read QAP instance from QAPLIB format
- */
-bool read_qaplib(const std::string& filename, QAPData& data) {
-    std::ifstream file(filename);
-    if (!file.is_open()) {
-        std::cerr << "Error: Cannot open file " << filename << std::endl;
-        return false;
-    }
-    
-    file >> data.n;
-    int n = data.n;
-    
-    data.distances.resize(n * n);
-    data.flows.resize(n * n);
-    
-    // Read distance matrix (first matrix in QAPLIB format)
-    for (int i = 0; i < n * n; ++i) {
-        file >> data.distances[i];
-    }
-    
-    // Read flow matrix (second matrix in QAPLIB format)
-    for (int i = 0; i < n * n; ++i) {
-        file >> data.flows[i];
-    }
-    
-    file.close();
-    return true;
-}
-
-/**
  * RTL1 Volume Hooks Implementation
  */
 class RTL1VolumeHooks : public VOL_user_hooks {
 private:
-    const QAPData& qap_data;
+    const Problem& qap_data;
     int n;
     
     // Working arrays for subproblem
@@ -92,7 +134,7 @@ private:
     std::vector<int> alpha_u_ind;   // u that achieves alpha[i]
     
 public:
-    RTL1VolumeHooks(const QAPData& data) 
+    RTL1VolumeHooks(const Problem& data) 
         : qap_data(data), n(data.n) {
         beta.resize(n * n * n);
         beta_j_ind.resize(n * n * n);
@@ -116,9 +158,9 @@ public:
      * 
      * LAGRANGIAN:
      *   L = sum_{i,j,u,v} d[i,j]*f[u,v]*y[i,u,j,v]
-     *       - sum_u mu[u] * (sum_i x[i,u] - 1)
-     *       - sum_{i,u,j,v} lambda[i,u,j,v] * (y[i,u,j,v] - y[j,v,i,u])
-     *       - sum_{i,u,j} theta[i,u,j] * (sum_v y[i,u,j,v] - x[i,u])
+     *       + sum_u mu[u] * (1 - sum_i x[i,u])
+     *       + sum_{i,u,j,v} lambda[i,u,j,v] * (y[j,v,i,u] - y[i,u,j,v])
+     *        + sum_{i,u,j} theta[i,u,j] * (x[i,u] - sum_v y[i,u,j,v])
      * 
      * ALGORITHM:
      *   1. Compute beta[i,u,v] = min_j {Lagrangian cost of y[i,u,j,v]=1}
@@ -146,7 +188,7 @@ public:
                     
                     for (int j = 0; j < n; ++j) {
                         // Cost of setting y[i,u,j,v] = 1 (original objective)
-                        double cost = qap_data.dist(i, j) * qap_data.flow(u, v);
+                        double cost = qap_data.D[i][j] * qap_data.F[u][v];
 
                         // Symmetry dual counted once: -lambda(i,u,j,v) if i<=j, +lambda(j,v,i,u) if i>=j
                         if (i <= j) {
@@ -243,7 +285,7 @@ public:
             for (int j = 0; j < n; ++j) {
                 for (int u = 0; u < n; ++u) {
                     for (int v = 0; v < n; ++v) {
-                        pcost += qap_data.dist(i, j) * qap_data.flow(u, v) * y(i, u, j, v);
+                        pcost += qap_data.D[i][j] * qap_data.F[u][v] * y(i, u, j, v);
                     }
                 }
             }
@@ -294,52 +336,7 @@ public:
     // Simple heuristic: extract assignment from x variables
     virtual int heuristics(const VOL_problem& /*p*/, const VOL_dvector& psol,
                           double& heur_val) override {
-        std::vector<int> assignment(n, -1);
-        std::vector<bool> used(n, false);
-        
-        // Greedy assignment based on x values
-        for (int i = 0; i < n; ++i) {
-            int best_u = -1;
-            double best_val = -1.0;
-            
-            for (int u = 0; u < n; ++u) {
-                if (!used[u] && x(i, u) > best_val) {
-                    best_val = x(i, u);
-                    best_u = u;
-                }
-            }
-            
-            if (best_u >= 0) {
-                assignment[i] = best_u;
-                used[best_u] = true;
-            }
-        }
-        
-        // Check if we have a complete assignment
-        bool is_complete = true;
-        for (int i = 0; i < n; ++i) {
-            if (assignment[i] < 0) {
-                is_complete = false;
-                break;
-            }
-        }
-        
-        if (!is_complete) {
-            heur_val = DBL_MAX;
-            return 0;
-        }
-        
-        // Evaluate QAP objective
-        heur_val = 0.0;
-        for (int i = 0; i < n; ++i) {
-            for (int j = 0; j < n; ++j) {
-                int u = assignment[i];
-                int v = assignment[j];
-                heur_val += qap_data.dist(i, j) * qap_data.flow(u, v);
-            }
-        }
-        
-        return 1;  // Found feasible solution
+        return 0;  // Found feasible solution
     }
 };
 
@@ -350,10 +347,12 @@ int main(int argc, char* argv[]) {
     if (argc < 2) {
         std::cout << "Usage: " << argv[0] << " <instance.dat> [options]" << std::endl;
         std::cout << "Options:" << std::endl;
-        std::cout << "  --time <seconds>    Time limit (default: 3600)" << std::endl;
-        std::cout << "  --threads <n>       Number of threads (default: 8)" << std::endl;
-        std::cout << "  --log               Enable detailed logging" << std::endl;
-        std::cout << "  --output <file>     Output solution file" << std::endl;
+        std::cout << "  --time <seconds>      Time limit (default: 3600)" << std::endl;
+        std::cout << "  --threads <n>         Number of threads (default: 8)" << std::endl;
+        std::cout << "  --log                 Enable detailed logging" << std::endl;
+        std::cout << "  --output <file>       Output solution file" << std::endl;
+        std::cout << "  --save-dual <file>    Save dual vector and primal solution" << std::endl;
+        std::cout << "  --load-dual <file>    Load initial dual vector" << std::endl;
         return 1;
     }
     
@@ -363,6 +362,8 @@ int main(int argc, char* argv[]) {
     int num_threads = 8;
     bool verbose = false;
     std::string output_path = "";
+    std::string save_dual_path = "";
+    std::string load_dual_path = "";
     
     for (int i = 2; i < argc; ++i) {
         std::string arg = argv[i];
@@ -374,6 +375,10 @@ int main(int argc, char* argv[]) {
             verbose = true;
         } else if (arg == "--output" && i + 1 < argc) {
             output_path = argv[++i];
+        } else if (arg == "--save-dual" && i + 1 < argc) {
+            save_dual_path = argv[++i];
+        } else if (arg == "--load-dual" && i + 1 < argc) {
+            load_dual_path = argv[++i];
         }
     }
     
@@ -389,10 +394,7 @@ int main(int argc, char* argv[]) {
     std::cout << "==================================================" << std::endl;
     
     // Read QAP instance
-    QAPData qap_data;
-    if (!read_qaplib(instance_path, qap_data)) {
-        return 1;
-    }
+    auto qap_data = Problem::fromQAPLIB(instance_path);
     
     int n = qap_data.n;
     std::cout << "Problem size: n = " << n << std::endl;
@@ -417,14 +419,30 @@ int main(int argc, char* argv[]) {
     vol_problem.dsol.allocate(vol_problem.dsize);
     vol_problem.dsol = 0.0;
     
+    // Load dual vector if specified
+    if (!load_dual_path.empty()) {
+        std::ifstream dual_file(load_dual_path, std::ios::binary);
+        if (dual_file.is_open()) {
+            std::cout << "Loading dual vector from: " << load_dual_path << std::endl;
+            for (int i = 0; i < vol_problem.dsize; ++i) {
+                dual_file.read(reinterpret_cast<char*>(&vol_problem.dsol[i]), sizeof(double));
+            }
+            dual_file.close();
+            std::cout << "Dual vector loaded successfully." << std::endl;
+        } else {
+            std::cerr << "Warning: Could not open dual file: " << load_dual_path << std::endl;
+            std::cerr << "Starting with zero dual vector." << std::endl;
+        }
+    }
+    
     // Set Volume algorithm parameters (from qap.par defaults)
     vol_problem.parm.lambdainit = 0.1;
-    vol_problem.parm.alphainit = 1.0;
+    vol_problem.parm.alphainit = 0.1;
     vol_problem.parm.alphamin = 0.001;
     vol_problem.parm.alphafactor = 0.66;
     vol_problem.parm.alphaint = 50;
     
-    vol_problem.parm.maxsgriters = time_limit * 10;  // Approximate iterations from time
+    vol_problem.parm.maxsgriters = 100000000;  // Approximate iterations from time
     vol_problem.parm.primal_abs_precision = 0.001;
     vol_problem.parm.gap_abs_precision = 0.0;
     vol_problem.parm.gap_rel_precision = 0.001;
@@ -446,11 +464,17 @@ int main(int argc, char* argv[]) {
     // Create hooks
     RTL1VolumeHooks hooks(qap_data);
     
+    // Determine if we should use loaded dual (warm-start)
+    bool use_dual_warmstart = !load_dual_path.empty();
+    
     // Solve
     std::cout << "\nStarting Volume algorithm..." << std::endl;
+    if (use_dual_warmstart) {
+        std::cout << "Using warm-start from loaded dual vector." << std::endl;
+    }
     auto start_time = std::chrono::high_resolution_clock::now();
     
-    int retval = vol_problem.solve(hooks, false);
+    int retval = vol_problem.solve(hooks, use_dual_warmstart);
     
     auto end_time = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
@@ -462,6 +486,36 @@ int main(int argc, char* argv[]) {
     std::cout << "Status: " << (retval == 0 ? "Success" : "Error") << std::endl;
     std::cout << "Lower bound: " << vol_problem.value << std::endl;
     std::cout << "Time: " << std::fixed << std::setprecision(2) << elapsed_seconds << " seconds" << std::endl;
+    
+    // Save dual vector and primal solution if requested
+    if (!save_dual_path.empty()) {
+        std::cout << "\nSaving dual vector and primal solution to: " << save_dual_path << std::endl;
+        
+        // Save dual vector
+        std::ofstream dual_file(save_dual_path, std::ios::binary);
+        if (dual_file.is_open()) {
+            for (int i = 0; i < vol_problem.dsize; ++i) {
+                dual_file.write(reinterpret_cast<const char*>(&vol_problem.dsol[i]), sizeof(double));
+            }
+            dual_file.close();
+            std::cout << "Dual vector saved (" << vol_problem.dsize << " values)." << std::endl;
+        } else {
+            std::cerr << "Error: Could not save dual vector to: " << save_dual_path << std::endl;
+        }
+        
+        // Save primal solution
+        std::string primal_path = save_dual_path + ".primal";
+        std::ofstream primal_file(primal_path, std::ios::binary);
+        if (primal_file.is_open()) {
+            for (int i = 0; i < vol_problem.psize; ++i) {
+                primal_file.write(reinterpret_cast<const char*>(&vol_problem.psol[i]), sizeof(double));
+            }
+            primal_file.close();
+            std::cout << "Primal solution saved to: " << primal_path << " (" << vol_problem.psize << " values)." << std::endl;
+        } else {
+            std::cerr << "Error: Could not save primal solution to: " << primal_path << std::endl;
+        }
+    }
     
     // Extract and save best solution if requested
     if (!output_path.empty() && vol_problem.psol.size() > 0) {
@@ -483,19 +537,25 @@ int main(int argc, char* argv[]) {
         double obj = 0.0;
         for (int i = 0; i < n; ++i) {
             for (int j = 0; j < n; ++j) {
-                obj += qap_data.dist(i, j) * qap_data.flow(assignment[i], assignment[j]);
+                obj += qap_data.D[i][j] * qap_data.F[assignment[i]][assignment[j]];
             }
         }
         
         std::cout << "Primal objective: " << obj << std::endl;
-        
-        // Save solution
-        try {
-            qap::write_solution(output_path, n, assignment, obj);
-            std::cout << "Solution saved to: " << output_path << std::endl;
-        } catch (const std::exception& e) {
-            std::cerr << "Warning: Could not save solution: " << e.what() << std::endl;
-        }
+
+    }
+    
+    // Always report a summary of primal violations (assignment, link, symmetry)
+    if (vol_problem.psol.size() > 0) {
+        auto vsummary = compute_primal_violation_summary(vol_problem.psol, n);
+        std::cout << "\nPrimal violation summary (n=" << vsummary.n << ")" << std::endl;
+        std::cout << "  Max abs: " << std::setprecision(6) << vsummary.max_abs
+                  << ", Avg abs: " << vsummary.avg_abs << std::endl;
+        std::cout << "  Assignment  -> max: " << vsummary.assignment_max
+                  << ", avg: " << vsummary.assignment_avg << std::endl;
+        std::cout << "  Linking     -> max: " << vsummary.link_max
+                  << ", avg: " << vsummary.link_avg << std::endl;
+        std::cout << "  Symmetry    -> included in Max/Avg above" << std::endl;
     }
     
     std::cout << "==================================================" << std::endl;

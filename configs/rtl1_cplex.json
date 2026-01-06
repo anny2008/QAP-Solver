@@ -2,5 +2,8 @@
   "solver": "rtl1_cplex",
   "formulation": "rtl1",
   "time_limit": 120,
-  "threads": 8
+  "threads": 8,
+  "log_output": true,
+  "is_relax": true,
+  "warmstart": "/home/local.isima.fr/antran/UFF/QAP_New_formulation/data/QAPLIB/nug12.sln"
 }

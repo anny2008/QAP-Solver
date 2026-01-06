@@ -31,6 +31,10 @@ from typing import Callable, Dict, Optional
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# Ensure local Python packages are importable (add repo's python/ to sys.path)
+if str(ROOT / "python") not in sys.path:
+    sys.path.insert(0, str(ROOT / "python"))
+
 
 @dataclass
 class ModuleSpec:
@@ -97,25 +101,49 @@ def run_rtl1_scip_cpp(args: "Args", spec: ModuleSpec) -> int:
 def run_rtl1_volume(args: "Args", spec: ModuleSpec) -> int:
     if not spec.binary:
         raise ValueError("Missing binary path for rtl1_volume")
-    if not args.instance:
-        raise ValueError("RTL1 Volume requires --instance")
+    
+    # Load config if provided
+    config = _load_config(args.config, spec.default_config)
+    
+    # Determine instance path (CLI arg > config > error)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("RTL1 Volume requires --instance or instance in config")
 
-    cmd = [str(spec.binary), str(_resolve_path(args.instance))]
-    if args.time_limit is not None:
-        cmd += ["--time", str(args.time_limit)]
-    if args.threads is not None:
-        cmd += ["--threads", str(args.threads)]
-    if args.log:
+    cmd = [str(spec.binary), str(_resolve_path(instance))]
+    
+    # Time limit: CLI > config > default
+    time_limit = args.time_limit or config.get("time_limit")
+    if time_limit is not None:
+        cmd += ["--time", str(time_limit)]
+    
+    # Threads: CLI > config > default
+    threads = args.threads or config.get("threads")
+    if threads is not None:
+        cmd += ["--threads", str(threads)]
+    
+    # Log: CLI > config
+    if args.log or config.get("log_output", False):
         cmd.append("--log")
+    
     if args.output:
         cmd += ["--output", str(_resolve_path(args.output))]
+    
+    # Dual vector save/load from config
+    save_dual = config.get("save_dual", "")
+    if save_dual:
+        cmd += ["--save-dual", str(_resolve_path(save_dual))]
+    
+    load_dual = config.get("load_dual", "")
+    if load_dual:
+        cmd += ["--load-dual", str(_resolve_path(load_dual))]
 
     return _run_subprocess(cmd, spec.workdir)
 
 
 def run_rtl1_cplex(args: "Args", spec: ModuleSpec) -> int:
     try:
-        from python.qap.modules.rtl1_cplex.solver import RTL1CPLEXSolver
+        from qap.modules.rtl1_cplex.solver import RTL1CPLEXSolver
     except ImportError as exc:
         print("RTL1 CPLEX solver missing dependencies (docplex/cplex)", file=sys.stderr)
         raise exc
@@ -125,10 +153,18 @@ def run_rtl1_cplex(args: "Args", spec: ModuleSpec) -> int:
 
     config = _load_config(args.config, spec.default_config)
     solver = RTL1CPLEXSolver(config)
+
+    # Warm-start: prefer CLI arg, else use config key 'warmstart' if provided
+    warmstart_path = None
+    if args.warmstart:
+        warmstart_path = str(_resolve_path(args.warmstart))
+    elif "warmstart" in config and config["warmstart"]:
+        warmstart_path = str(_resolve_path(config["warmstart"]))
+
     solution = solver.solve_instance(
         instance_path=str(_resolve_path(args.instance)),
         output_path=str(_resolve_path(args.output)) if args.output else None,
-        warmstart_path=str(_resolve_path(args.warmstart)) if args.warmstart else None,
+        warmstart_path=warmstart_path,
     )
 
     _print_solution_summary(solution)
@@ -137,7 +173,7 @@ def run_rtl1_cplex(args: "Args", spec: ModuleSpec) -> int:
 
 def run_rtl1_scip_py(args: "Args", spec: ModuleSpec) -> int:
     try:
-        from python.qap.modules.rtl1_scip.solver import RTL1SCIPSolver
+        from qap.modules.rtl1_scip.solver import RTL1SCIPSolver
     except ImportError as exc:
         print("RTL1 SCIP Python solver missing dependencies (PySCIPOpt)", file=sys.stderr)
         raise exc
@@ -260,6 +296,7 @@ MODULES: Dict[str, ModuleSpec] = {
         workdir=ROOT / "cpp/modules/rtl1_volume",
         binary=ROOT / "cpp/modules/rtl1_volume/rtl1_volume_solver",
         build_cmd=["make"],
+        default_config=ROOT / "configs/rtl1_volume.json",
         runner=run_rtl1_volume,
     ),
     "rtl1_cplex": ModuleSpec(
