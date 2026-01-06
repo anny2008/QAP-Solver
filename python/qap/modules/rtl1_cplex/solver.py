@@ -19,7 +19,9 @@ from typing import Dict, Any, Optional, Tuple, List
 
 from docplex.mp.model import Model
 
-from python.qap.core import Problem, Solution, write_result
+from python.qap.core import Problem, Solution
+from python.qap.core.io import write_result
+from python.qap.core.solution_io import read_warmstart
 
 
 class RTL1CPLEXSolver:
@@ -88,30 +90,22 @@ class RTL1CPLEXSolver:
         # Create variables
         if self.is_relax:
             x = model.continuous_var_matrix(n, n, name="x", lb=0, ub=1)
-            y = model.continuous_var_dict(
-                (
-                    (i, u, j, v)
-                    for i in range(n)
-                    for u in range(n)
-                    for j in range(n)
-                    for v in range(n)
-                ),
-                name="y",
-                lb=0,
-                ub=1,
-            )
+            
         else:
             x = model.binary_var_matrix(n, n, name="x")
-            y = model.binary_var_dict(
-                (
-                    (i, u, j, v)
-                    for i in range(n)
-                    for u in range(n)
-                    for j in range(n)
-                    for v in range(n)
-                ),
-                name="y",
-            )
+            
+        y = model.continuous_var_dict(
+            (
+                (i, u, j, v)
+                for i in range(n)
+                for u in range(n)
+                for j in range(n)
+                for v in range(n)
+            ),
+            name="y",
+            lb=0,
+            ub=1,
+        )
 
         # Objective function
         model.minimize(
@@ -173,7 +167,7 @@ class RTL1CPLEXSolver:
         self,
         problem: Problem,
         fixed_variables: Optional[List[Tuple[int, int]]] = None,
-        warm_start: Optional[Dict[Tuple[int, int], float]] = None,
+        warmstart: Optional[Dict[Tuple[int, int], float]] = None,
     ) -> Solution:
         """
         Solve the QAP problem using RTL1 formulation.
@@ -181,7 +175,7 @@ class RTL1CPLEXSolver:
         Args:
             problem (Problem): QAP problem instance
             fixed_variables (list, optional): List of (i, u) to fix x[i,u] = 1
-            warm_start (dict, optional): Dictionary {(i,u): value} for warm-start
+            warmstart (dict, optional): Dictionary {(i,u): value} for warm-start
 
         Returns:
             Solution: Solution object with result
@@ -193,18 +187,16 @@ class RTL1CPLEXSolver:
 
         # Add warm-start if provided
         # docplex's add_mip_start requires a SolveSolution object
-        if warm_start is not None:
-            try:
-                # Create a SolveSolution object for warm-start
-                ws_solution = model.new_solution()
-                for (i, u), value in warm_start.items():
-                    ws_solution.add_var_value(x[i, u], value)
-                # Add MIP start using the solution object
-                model.add_mip_start(ws_solution)
-            except Exception as e:
-                # If warm-start fails, continue without it
-                if self.log_output:
-                    print(f"Warning: Could not add MIP start: {e}")
+        if warmstart is not None:
+            # Create a SolveSolution object for warm-start
+            ws_solution = model.new_solution()
+            for (i, u), value in warmstart.items():
+                ws_solution.add_var_value(x[i, u], value)
+                # Set y variables: y[i,u,j,v] = 1 if both x[i,u]=1 and x[j,v]=1
+                for (j, v), value2 in warmstart.items():
+                    ws_solution.add_var_value(y[i, u, j, v], value*value2)
+            # Add MIP start using the solution object
+            model.add_mip_start(ws_solution)
 
         # Solve
         solution = model.solve(log_output=self.log_output)
@@ -234,7 +226,7 @@ class RTL1CPLEXSolver:
 
             # Compute actual QAP objective from assignment if feasible
             if is_feasible and len(assignment) == problem.n:
-                actual_objective = problem.evaluate(assignment)
+                actual_objective = problem.evaluate_assignment(assignment)
             else:
                 # Can't evaluate non-integer solution
                 actual_objective = solution.objective_value
@@ -273,7 +265,7 @@ class RTL1CPLEXSolver:
         instance_path: str,
         output_path: Optional[str] = None,
         fixed_variables: Optional[List[Tuple[int, int]]] = None,
-        warm_start_path: Optional[str] = None,
+        warmstart_path: Optional[str] = None,
     ) -> Solution:
         """
         Solve a problem instance from file.
@@ -282,7 +274,7 @@ class RTL1CPLEXSolver:
             instance_path (str): Path to QAPLIB instance file
             output_path (str, optional): Path to save result JSON
             fixed_variables (list, optional): List of (i, u) to fix
-            warm_start_path (str, optional): Path to warm-start file (JSON dict)
+            warmstart_path (str, optional): Path to warmstart file (JSON dict)
 
         Returns:
             Solution: Solution object
@@ -291,20 +283,16 @@ class RTL1CPLEXSolver:
         problem = Problem.from_qaplib(instance_path)
 
         # Load warm-start if provided
-        warm_start = None
-        if warm_start_path:
-            with open(warm_start_path, "r") as f:
-                warm_start_data = json.load(f)
-                # Convert string keys to tuples
-                warm_start = {
-                    tuple(map(int, k.split(","))): v for k, v in warm_start_data.items()
-                }
+        if warmstart_path is not None:
+            warmstart = read_warmstart(warmstart_path)
+        else:
+            warmstart = None
 
         # Solve
         solution = self.solve(
             problem,
             fixed_variables=fixed_variables,
-            warm_start=warm_start,
+            warmstart=warmstart,
         )
 
         # Update instance name

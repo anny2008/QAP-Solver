@@ -40,19 +40,19 @@ public:
         int n;
         file >> n;
 
+        // Read distance matrix first (input: n, D, F)
+        std::vector<std::vector<double>> D(n, std::vector<double>(n));
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < n; j++) {
+                file >> D[i][j];
+            }
+        }
+
         // Read flow matrix
         std::vector<std::vector<double>> F(n, std::vector<double>(n));
         for (int i = 0; i < n; i++) {
             for (int j = 0; j < n; j++) {
                 file >> F[i][j];
-            }
-        }
-
-        // Read distance matrix
-        std::vector<std::vector<double>> D(n, std::vector<double>(n));
-        for (int i = 0; i < n; i++) {
-            for (int j = 0; j < n; j++) {
-                file >> D[i][j];
             }
         }
 
@@ -74,7 +74,7 @@ public:
         double obj = 0.0;
         for (int i = 0; i < n; i++) {
             for (int j = 0; j < n; j++) {
-                obj += F[i][j] * D[assignment[i]][assignment[j]];
+                obj += F[assignment[i]][assignment[j]] * D[i][j];
             }
         }
         return obj;

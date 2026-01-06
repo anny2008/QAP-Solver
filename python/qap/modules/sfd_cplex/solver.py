@@ -87,8 +87,8 @@ class SFDLazyCallback(ConstraintCallbackMixin, LazyConstraintCallback):
                     # Compute delta values for valid inequality
                     delta_u_ij = np.sum([
                         sol.get_value(x[k, g]) *
-                        (self.qap_problem.flows[g, u] * (self.qap_problem.distances[k, j] - self.qap_problem.distances[k, i]) +
-                         self.qap_problem.flows[u, g] * (self.qap_problem.distances[j, k] - self.qap_problem.distances[i, k]))
+                        (self.qap_problem.F[g, u] * (self.qap_problem.D[k, j] - self.qap_problem.D[k, i]) +
+                         self.qap_problem.F[u, g] * (self.qap_problem.D[j, k] - self.qap_problem.D[i, k]))
                         for k in range(self.qap_problem.n)
                         for g in range(self.qap_problem.n)
                         if k != i and k != j and g != u and g != v
@@ -96,8 +96,8 @@ class SFDLazyCallback(ConstraintCallbackMixin, LazyConstraintCallback):
                     
                     delta_v_ji = np.sum([
                         sol.get_value(x[k, g]) *
-                        (self.qap_problem.flows[g, v] * (self.qap_problem.distances[k, i] - self.qap_problem.distances[k, j]) +
-                         self.qap_problem.flows[v, g] * (self.qap_problem.distances[i, k] - self.qap_problem.distances[j, k]))
+                        (self.qap_problem.F[g, v] * (self.qap_problem.D[k, i] - self.qap_problem.D[k, j]) +
+                         self.qap_problem.F[v, g] * (self.qap_problem.D[i, k] - self.qap_problem.D[j, k]))
                         for k in range(self.qap_problem.n)
                         for g in range(self.qap_problem.n)
                         if k != i and k != j and g != u and g != v
@@ -130,8 +130,8 @@ class SFDLazyCallback(ConstraintCallbackMixin, LazyConstraintCallback):
             for g in range(n):
                 if k != i and k != j and g != u and g != v:
                     indx.append(x[k, g].index)
-                    coeff = (self.qap_problem.flows[g, u] * (self.qap_problem.distances[k, j] - self.qap_problem.distances[k, i]) +
-                             self.qap_problem.flows[u, g] * (self.qap_problem.distances[j, k] - self.qap_problem.distances[i, k]))
+                    coeff = (self.qap_problem.F[g, u] * (self.qap_problem.D[k, j] - self.qap_problem.D[k, i]) +
+                             self.qap_problem.F[u, g] * (self.qap_problem.D[j, k] - self.qap_problem.D[i, k]))
                     coeffs.append(float(coeff))
         
         # Add x[k,g] coefficients for delta_v_ji
@@ -139,8 +139,8 @@ class SFDLazyCallback(ConstraintCallbackMixin, LazyConstraintCallback):
             for g in range(n):
                 if k != i and k != j and g != u and g != v:
                     indx.append(x[k, g].index)
-                    coeff = (self.qap_problem.flows[g, v] * (self.qap_problem.distances[k, i] - self.qap_problem.distances[k, j]) +
-                             self.qap_problem.flows[v, g] * (self.qap_problem.distances[i, k] - self.qap_problem.distances[j, k]))
+                    coeff = (self.qap_problem.F[g, v] * (self.qap_problem.D[k, i] - self.qap_problem.D[k, j]) +
+                             self.qap_problem.F[v, g] * (self.qap_problem.D[i, k] - self.qap_problem.D[j, k]))
                     coeffs.append(float(coeff))
         
         # Add big-M terms for x[i,u] and x[j,v]
@@ -193,7 +193,7 @@ class SFDSolver:
         problem: Problem,
         subgraphs: Dict,
         fixed_variables: Optional[List[Tuple[int, int]]] = None,
-        warm_start: Optional[Dict[Tuple[int, int], float]] = None,
+        warmstart: Optional[Dict[Tuple[int, int], float]] = None,
     ) -> Tuple[Model, Dict]:
         """
         Create CPLEX model for SFD formulation.
@@ -202,15 +202,15 @@ class SFDSolver:
             problem: QAP problem instance
             subgraphs: Decomposed subgraphs {k: (f_k, G_k, G_n_k), ...}
             fixed_variables: List of (i, u) to fix x[i,u] = 1
-            warm_start: Dictionary {(i,u): value} for warm-starting
+            warmstart: Dictionary {(i,u): value} for warm-starting
 
         Returns:
             model: CPLEX model
             x_vars: Assignment variables
         """
         n = problem.n
-        distances = problem.distances
-        flows = problem.flows
+        distances = problem.D
+        flows = problem.F
 
         model = Model(name="QAP_SFD")
         
@@ -282,11 +282,14 @@ class SFDSolver:
                 model.add_constraint(x[i, u] == 1, ctname=f"fix_x_{i}_{u}")
 
         # Warm-start if provided
-        if warm_start is not None:
+        if warmstart is not None:
             ws = model.new_solution()
-            for (i, u), val in warm_start.items():
-                if i < n and u < n:
-                    ws.add_var_value(x[i, u], val)
+            for (i, u), val in warmstart.items():
+                ws.add_var_value(x[i, u], val)
+                for (j, v), val in warmstart.items():
+                    for k in subgraphs:
+                        if (u, v) in subgraphs[k][1]:
+                            ws.add_var_value(e[j, i, k], min(val, warmstart.get((j, v), 0.0)))
             model.add_mip_start(ws)
 
         # Configure CPLEX parameters
@@ -301,7 +304,7 @@ class SFDSolver:
         problem: Problem,
         subgraphs: Dict,
         fixed_variables: Optional[List[Tuple[int, int]]] = None,
-        warm_start: Optional[Dict[Tuple[int, int], float]] = None,
+        warmstart: Optional[Dict[Tuple[int, int], float]] = None,
     ) -> Solution:
         """
         Solve QAP using SFD formulation.
@@ -310,7 +313,7 @@ class SFDSolver:
             problem: QAP problem instance
             subgraphs: Decomposed subgraphs
             fixed_variables: Variables to fix
-            warm_start: Warm-start solution
+            warmstart: Warm-start solution
 
         Returns:
             Solution object
@@ -318,7 +321,7 @@ class SFDSolver:
         start_time = time.time()
 
         # Create model
-        model, x = self._create_model(problem, subgraphs, fixed_variables, warm_start)
+        model, x = self._create_model(problem, subgraphs, fixed_variables, warmstart)
 
         # Register lazy callback if using cuts
         if self.use_cuts:
@@ -340,23 +343,21 @@ class SFDSolver:
                         break
 
             return Solution(
+                instance="unknown",
+                solver=self.solver_name,
+                assignment=assignment,
                 objective=solution.objective_value,
                 lower_bound=model.solve_details.best_bound,
-                gap=model.solve_details.mip_relative_gap,
                 time=elapsed_time,
-                assignment=assignment,
-                solver=self.solver_name,
-                status="optimal" if solution.objective_value == model.solve_details.best_bound else "feasible",
             )
         else:
             return Solution(
+                instance="unknown",
+                solver=self.solver_name,
+                assignment=None,
                 objective=None,
                 lower_bound=model.solve_details.best_bound,
-                gap=None,
                 time=elapsed_time,
-                assignment=None,
-                solver=self.solver_name,
-                status="no_solution",
             )
 
     def load_warmstart_from_file(self, filepath: str) -> Dict[Tuple[int, int], float]:

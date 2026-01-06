@@ -1,0 +1,9 @@
+{
+  "instance": "/home/local.isima.fr/antran/UFF/QAP_New_formulation/data/QAPLIB/chr12a.dat",
+  "warmstart": "/home/local.isima.fr/antran/UFF/QAP_New_formulation/data/QAPLIB/chr12a.sln",
+  "decomposition": "value_layer",
+  "time": 120,
+  "threads": 4,
+  "relax": false,
+  "log": true
+}

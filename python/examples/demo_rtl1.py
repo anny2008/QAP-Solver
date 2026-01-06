@@ -67,7 +67,7 @@ def run_single_instance(
     print(f"{'='*70}")
 
     result = solver.solve_instance(
-        instance_path, output_path=output_path, warm_start_path=warm_start_path
+        instance_path, output_path=output_path, warmstart_path=warm_start_path
     )
 
     print(f"\nResults:")

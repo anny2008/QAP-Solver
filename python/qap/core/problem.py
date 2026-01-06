@@ -53,37 +53,24 @@ class Problem:
         # First token is problem size
         n = int(tokens[0])
 
-        # Next n*n tokens are flow matrix
-        F = []
-        idx = 1
-        for i in range(n):
-            row = []
-            for j in range(n):
-                row.append(float(tokens[idx]))
-                idx += 1
-            F.append(row)
+        # Next n*n tokens are distance matrix (input: n, D, F)
+        D = np.array([float(tokens[i]) for i in range(1, n*n + 1)]).reshape(n, n)
 
-        # Next n*n tokens are distance matrix
-        D = []
-        for i in range(n):
-            row = []
-            for j in range(n):
-                row.append(float(tokens[idx]))
-                idx += 1
-            D.append(row)
+        # Next n*n tokens are flow matrix
+        F = np.array([float(tokens[i]) for i in range(n*n + 1, 2*n*n + 1)]).reshape(n, n)
 
         return cls(n, F, D)
 
-    def evaluate(self, assignment):
+    def evaluate_assignment(self, assignment):
         """
         Evaluate the objective value for a given assignment.
 
         Args:
-            assignment (list or ndarray): Permutation π where π[i] = j means
-                                         facility i is assigned to location j
+            assignment (list or ndarray): Permutation π where π[i] = u means
+                                         facility u is assigned to location i
 
         Returns:
-            float: Objective value = sum(F[i,j] * D[π[i], π[j]])
+            float: Objective value = sum(F[u,v] * D[i, j]) for all i,j
         """
         assignment = np.array(assignment, dtype=int)
         assert len(assignment) == self.n, f"Assignment length must be {self.n}"
@@ -91,7 +78,7 @@ class Problem:
         obj = 0.0
         for i in range(self.n):
             for j in range(self.n):
-                obj += self.F[i, j] * self.D[assignment[i], assignment[j]]
+                obj += self.F[assignment[i], assignment[j]] * self.D[i, j]
 
         return obj
 
