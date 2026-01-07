@@ -11,6 +11,8 @@
 #include <scip/scipdefplugins.h>
 #include <vector>
 #include <map>
+#include <unordered_map>
+#include <unordered_set>
 #include <cstring>
 #include <cmath>
 #include <iostream>
@@ -20,10 +22,38 @@
 #include <iomanip>
 #include "../../core/problem.h"
 #include "../../include/qap_solution_io.hpp"
+#include "volume_relax.hpp"
+
 
 // Type aliases for readability
 using XVarMap = std::map<std::pair<int,int>, SCIP_VAR*>;
 using YVarMap = std::map<std::tuple<int,int,int,int>, SCIP_VAR*>;
+
+
+
+struct VolumeRelaxData {
+    explicit VolumeRelaxData(const Problem& p) : problem(p) {}
+    Problem problem;
+    int n = 0;
+    int threads = 1;
+    double time_limit = 0.0;
+    bool verbose = false;
+    bool relaxation_info = false;
+    std::vector<SCIP_VAR*> x_vars;
+    std::vector<SCIP_VAR*> y_vars;
+    std::vector<double> last_dual;  // warm-start dual from previous iteration
+};
+
+static SCIP_DECL_RELAXEXEC(relaxExecVolume);
+static SCIP_DECL_RELAXFREE(relaxFreeVolume);
+static SCIP_RETCODE includeVolumeRelax(SCIP* scip,
+                                       const Problem& problem,
+                                       int threads,
+                                       double time_limit,
+                                       bool verbose,
+                                       const XVarMap& x,
+                                       const YVarMap& y,
+                                       bool relaxation_info);
 
 /**
  * Create RLT1 x variables: x[i,u] ∈ {0,1} for facility i at location u
@@ -192,6 +222,145 @@ void set_objective(SCIP* scip, int n, const Problem& problem, const YVarMap& y) 
             }
         }
     }
+}
+
+/**
+ * Volume-based relaxation handler: gather fixings, call Volume, feed bound/primal to SCIP.
+ */
+static SCIP_DECL_RELAXEXEC(relaxExecVolume) {
+    auto* data = reinterpret_cast<VolumeRelaxData*>(SCIPrelaxGetData(relax));
+    if (data == nullptr) {
+        *result = SCIP_DIDNOTRUN;
+        return SCIP_OKAY;
+    }
+
+    const int n = data->n;
+    const int num_x = n * n;
+    const int num_y = n * n * n * n;
+
+    std::unordered_map<int, double> map_fixed;
+
+    // Collect x fixings
+    for (int i = 0; i < n; ++i) {
+        for (int u = 0; u < n; ++u) {
+            const int idx = i * n + u;
+            SCIP_VAR* var = data->x_vars[idx];
+            if (var == nullptr) continue;
+            double lb = SCIPvarGetLbLocal(var);
+            double ub = SCIPvarGetUbLocal(var);
+            if (SCIPisEQ(scip, lb, ub)) {
+                map_fixed[idx] = lb;
+            }
+        }
+    }
+
+    // Collect y fixings
+    for (int i = 0; i < n; ++i) {
+        for (int u = 0; u < n; ++u) {
+            for (int j = 0; j < n; ++j) {
+                for (int v = 0; v < n; ++v) {
+                    const int idx = i * n * n * n + u * n * n + j * n + v;
+                    SCIP_VAR* var = data->y_vars[idx];
+                    if (var == nullptr) continue;
+                    double lb = SCIPvarGetLbLocal(var);
+                    double ub = SCIPvarGetUbLocal(var);
+                    if (SCIPisEQ(scip, lb, ub)) {
+                        map_fixed[num_x + idx] = lb;
+                    }
+                }
+            }
+        }
+    }
+
+    FixedVariables fixed = build_fixed_from_map(map_fixed, n);
+    VolumeResult res = solve_rtl1_volume_relax(data->problem, fixed, data->threads, data->time_limit, false, data->relaxation_info, data->last_dual);
+
+    if (res.status != 0) {
+        *result = SCIP_DIDNOTRUN;
+        return SCIP_OKAY;
+    }
+
+    // Store dual for warm-start in next iteration
+    if (!res.dual.empty()) {
+        data->last_dual = res.dual;
+    }
+
+    // Populate relaxation solution (best effort if sizes match)
+    if (res.primal.size() >= static_cast<size_t>(num_x)) {
+        SCIPclearRelaxSolVals(scip, relax);
+        for (int idx = 0; idx < num_x && idx < (int)res.primal.size(); ++idx) {
+            SCIP_VAR* var = data->x_vars[idx];
+            if (var != nullptr) {
+                SCIPsetRelaxSolVal(scip, relax, var, res.primal[idx]);
+            }
+        }
+        const int yoffset = num_x;
+        for (int idx = 0; idx < num_y && yoffset + idx < (int)res.primal.size(); ++idx) {
+            SCIP_VAR* var = data->y_vars[idx];
+            if (var != nullptr) {
+                SCIPsetRelaxSolVal(scip, relax, var, res.primal[yoffset + idx]);
+            }
+        }
+        SCIPmarkRelaxSolValid(scip, relax, 0u);
+    }
+
+    *lowerbound = res.lower_bound;
+    *result = SCIP_SUCCESS;
+    return SCIP_OKAY;
+}
+
+static SCIP_DECL_RELAXFREE(relaxFreeVolume) {
+    auto* data = reinterpret_cast<VolumeRelaxData*>(SCIPrelaxGetData(relax));
+    delete data;
+    return SCIP_OKAY;
+}
+
+static SCIP_RETCODE includeVolumeRelax(SCIP* scip,
+                                       const Problem& problem,
+                                       int threads,
+                                       double time_limit,
+                                       bool verbose,
+                                       const XVarMap& x,
+                                       const YVarMap& y,
+                                       bool relaxation_info) {
+    const int n = problem.n;
+    auto* data = new VolumeRelaxData(problem);
+    data->n = n;
+    data->threads = threads;
+    data->time_limit = time_limit;
+    data->verbose = verbose;
+    data->relaxation_info = relaxation_info;
+    data->x_vars.assign(n * n, nullptr);
+    data->y_vars.assign(n * n * n * n, nullptr);
+
+    for (const auto& kv : x) {
+        int i = kv.first.first;
+        int u = kv.first.second;
+        data->x_vars[i * n + u] = kv.second;
+    }
+    for (const auto& kv : y) {
+        int i = std::get<0>(kv.first);
+        int u = std::get<1>(kv.first);
+        int j = std::get<2>(kv.first);
+        int v = std::get<3>(kv.first);
+        data->y_vars[i * n * n * n + u * n * n + j * n + v] = kv.second;
+    }
+
+    static bool g_relaxation_info = false;
+    g_relaxation_info = relaxation_info;
+    SCIP_RELAX* relax = nullptr;
+    SCIP_CALL( SCIPincludeRelaxBasic(
+        scip,
+        &relax,
+        "rtl1_volume",
+        "RTL1 Volume relaxation",
+        100000,   // high priority
+        1,        // run at every node
+        relaxExecVolume,
+        (SCIP_RELAXDATA*)data) );
+
+    SCIP_CALL( SCIPsetRelaxFree(scip, relax, relaxFreeVolume) );
+    return SCIP_OKAY;
 }
 
 /**
@@ -364,6 +533,8 @@ int solve_qap_rtl1(const std::string& instance_file,
                    double time_limit,
                    int threads,
                    bool log_output,
+                   const std::string& relaxation_mode,
+                   bool relaxation_info,
                    std::vector<int>& assignment, 
                    double& objective, 
                    double& lower_bound) {
@@ -391,6 +562,10 @@ int solve_qap_rtl1(const std::string& instance_file,
     SCIP* scip = nullptr;
     SCIP_CALL_ABORT(SCIPcreate(&scip));
     SCIP_CALL_ABORT(SCIPincludeDefaultPlugins(scip));
+    
+    // Try to minimize LP solver workload (optional parameters, may not exist in SCIP)
+    SCIP_CALL_ABORT(SCIPsetBoolParam(scip, "lp/alwaysgetduals", FALSE));  // Don't request LP duals
+    
     SCIP_CALL_ABORT(SCIPcreateProb(scip, "QAP_RTL1", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr));
     
     // Set output
@@ -410,6 +585,17 @@ int solve_qap_rtl1(const std::string& instance_file,
     
     // Set objective
     set_objective(scip, n, problem, y);
+
+    // Include custom relaxation handler if requested
+    if (relaxation_mode == "volume") {
+        SCIP_CALL_ABORT(includeVolumeRelax(scip, problem, threads, time_limit, log_output || relaxation_info, x, y, relaxation_info));
+        if (log_output) {
+            std::cout << "Using custom relaxation: volume" << std::endl;
+        }
+        SCIP_CALL_ABORT( SCIPsetIntParam(scip, "lp/solvefreq", -1) ); // Disable default LP relaxations
+    } else if (log_output) {
+        std::cout << "Using default SCIP relaxation (no custom relax)" << std::endl;
+    }
     
     // Set warmstart if available
     if (has_warmstart) {
@@ -460,6 +646,8 @@ int solve_qap_rtl1(const std::string& instance_file,
  *   --time <seconds>    : Time limit (default: 3600)
  *   --threads <n>       : Number of threads (default: 4)
  *   --log               : Enable detailed output
+ *   --relaxation <mode> : Relaxation mode: 'default' or 'volume' (default: volume)
+ *   --relaxation-info   : Print extra info from relaxation handler (value, fixed vars, violations)
  */
 int main(int argc, char** argv) {
     if (argc < 2) {
@@ -479,6 +667,8 @@ int main(int argc, char** argv) {
     double time_limit = 3600.0;
     int threads = 4;
     bool log_output = false;
+    std::string relaxation_mode = "volume"; // default keeps current behavior
+    bool relaxation_info = false;
     
     // Parse arguments
     for (int i = 2; i < argc; ++i) {
@@ -493,6 +683,14 @@ int main(int argc, char** argv) {
             threads = std::stoi(argv[++i]);
         } else if (arg == "--log") {
             log_output = true;
+        } else if (arg == "--relaxation" && i + 1 < argc) {
+            relaxation_mode = argv[++i];
+            if (relaxation_mode != "default" && relaxation_mode != "volume") {
+                std::cerr << "Unknown relaxation mode: " << relaxation_mode << ". Use 'default' or 'volume'." << std::endl;
+                return 1;
+            }
+        } else if (arg == "--relaxation-info") {
+            relaxation_info = true;
         }
     }
     
@@ -514,7 +712,7 @@ int main(int argc, char** argv) {
     auto start_time = std::chrono::high_resolution_clock::now();
     
     int result = solve_qap_rtl1(instance_file, warmstart_file, time_limit, threads, log_output,
-                                assignment, objective, lower_bound);
+                                relaxation_mode, relaxation_info, assignment, objective, lower_bound);
     
     auto end_time = std::chrono::high_resolution_clock::now();
     double elapsed_sec = std::chrono::duration<double>(end_time - start_time).count();

@@ -2,8 +2,12 @@
   "solver": "rtl1_scip",
   "formulation": "rtl1",
   "is_relax": false,
+  "instance": "/home/local.isima.fr/antran/UFF/LP/assets/QAPLIB/nug12.dat",
   "time_limit": 120,
-  "threads": 8,
-  "log_output": false,
+  "threads": 15,
+  "log_output": true,
+  "relaxation": "volume",
+  "relaxation_info": true,
+  "warmstart": "/home/local.isima.fr/antran/UFF/QAP_New_formulation/data/QAPLIB/nug12.sln",
   "preprocessing_symmetry": 5
 }

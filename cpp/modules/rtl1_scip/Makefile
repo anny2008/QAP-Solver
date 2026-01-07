@@ -4,24 +4,24 @@ CXX = g++
 CXXFLAGS = -std=c++17 -O3 -Wall -Wextra -fopenmp
 
 # Include and library flags
-INCFLAGS = 
-LIBFLAGS = -lscip -lpthread -ldl -lm
+INCFLAGS = -I../../core -I../rtl1_volume
+LIBFLAGS = -lscip -lpthread -ldl -lm -fopenmp
 
 # Source and output
-SRC = rtl1_solver.cpp
-OBJ = rtl1_solver.o
+SRCS = rtl1_solver.cpp volume_relax.cpp ../rtl1_volume/VolVolume.cpp
+OBJS = $(SRCS:.cpp=.o)
 EXE = rtl1_solver
 
 # Build rules
 all: $(EXE)
 
-$(EXE): $(OBJ)
-	$(CXX) $(CXXFLAGS) -o $@ $< $(LIBFLAGS)
+$(EXE): $(OBJS)
+	$(CXX) $(CXXFLAGS) -o $@ $(OBJS) $(LIBFLAGS)
 
-$(OBJ): $(SRC)
+%.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(INCFLAGS) -c -o $@ $<
 
 clean:
-	rm -f $(OBJ) $(EXE)
+	rm -f $(OBJS) $(EXE)
 
 .PHONY: all clean

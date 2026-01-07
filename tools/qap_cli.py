@@ -80,20 +80,48 @@ def run_sfd_scip(args: "Args", spec: ModuleSpec) -> int:
 def run_rtl1_scip_cpp(args: "Args", spec: ModuleSpec) -> int:
     if not spec.binary:
         raise ValueError("Missing binary path for rtl1_scip")
-    if not args.instance:
-        raise ValueError("RTL1 SCIP (C++) requires --instance")
+    
+    # Load config if provided
+    config = _load_config(args.config, spec.default_config)
+    
+    # Determine instance path (CLI arg > config > error)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("RTL1 SCIP (C++) requires --instance or instance in config")
 
-    cmd = [str(spec.binary), str(_resolve_path(args.instance))]
-    if args.warmstart:
-        cmd += ["--warmstart", str(_resolve_path(args.warmstart))]
+    cmd = [str(spec.binary), str(_resolve_path(instance))]
+    
+    # Warmstart: CLI > config
+    warmstart = args.warmstart or config.get("warmstart")
+    if warmstart:
+        cmd += ["--warmstart", str(_resolve_path(warmstart))]
+    
     if args.output:
         cmd += ["--output", str(_resolve_path(args.output))]
-    if args.time_limit is not None:
-        cmd += ["--time", str(args.time_limit)]
-    if args.threads is not None:
-        cmd += ["--threads", str(args.threads)]
-    if args.log:
+    
+    # Time limit: CLI > config
+    time_limit = args.time_limit or config.get("time_limit")
+    if time_limit is not None:
+        cmd += ["--time", str(time_limit)]
+    
+    # Threads: CLI > config
+    threads = args.threads or config.get("threads")
+    if threads is not None:
+        cmd += ["--threads", str(threads)]
+    
+    # Log: CLI > config
+    if args.log or config.get("log_output", False):
         cmd.append("--log")
+
+    # Relaxation mode (config only for now): "default" or "volume"
+    relax_mode = config.get("relaxation")
+    if relax_mode in {"default", "volume"}:
+        cmd += ["--relaxation", relax_mode]
+
+    # Relaxation info (extra handler output)
+    relax_info = config.get("relaxation_info")
+    if relax_info is True or relax_info == 1 or relax_info == "true":
+        cmd.append("--relaxation-info")
 
     return _run_subprocess(cmd, spec.workdir)
 
@@ -137,6 +165,11 @@ def run_rtl1_volume(args: "Args", spec: ModuleSpec) -> int:
     load_dual = config.get("load_dual", "")
     if load_dual:
         cmd += ["--load-dual", str(_resolve_path(load_dual))]
+
+    # Fixed variables (file) from CLI or config key "fixed"
+    fixed_path = args.fixed or config.get("fixed")
+    if fixed_path:
+        cmd += ["--fixed", str(_resolve_path(fixed_path))]
 
     return _run_subprocess(cmd, spec.workdir)
 
@@ -288,6 +321,7 @@ MODULES: Dict[str, ModuleSpec] = {
         workdir=ROOT / "cpp/modules/rtl1_scip",
         binary=ROOT / "cpp/modules/rtl1_scip/rtl1_solver",
         build_cmd=["make"],
+        default_config=ROOT / "configs/rtl1_scip.json",
         runner=run_rtl1_scip_cpp,
     ),
     "rtl1_volume": ModuleSpec(
@@ -357,6 +391,7 @@ def run_command(subparsers) -> None:
     parser.add_argument("--relax", action="store_true", help="Use relaxed constraints where supported")
     parser.add_argument("--log", action="store_true", help="Enable solver logging")
     parser.add_argument("--build-first", action="store_true", help="Build before running")
+    parser.add_argument("--fixed", help="Fixed variables file (module-specific)")
 
 
 def parse_args() -> "Args":

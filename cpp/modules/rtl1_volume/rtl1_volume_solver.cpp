@@ -20,11 +20,90 @@
 #include <chrono>
 #include <iomanip>
 #include <cfloat>
+#include <cctype>
+#include <unordered_map>
+#include <unordered_set>
+#include <sstream>
 #include <omp.h>
 
 #include "VolVolume.hpp"
 #include "../../core/problem.h"
 #include "../../include/qap_solution_io.hpp"
+// Fixed-variable structures (x and y)
+struct FixedVariables {
+    std::unordered_map<int, int> x_fixed_1;                    // i -> u
+    std::unordered_map<int, std::unordered_set<int>> x_fixed_0; // i -> {u}
+    std::unordered_map<int, int> y_fixed_1;                    // key(i,u,v) -> j
+    std::unordered_map<int, std::unordered_set<int>> y_fixed_0; // key(i,u,v) -> {j}
+};
+
+static int key_y(int n, int i, int u, int v) { return i * n * n + u * n + v; }
+
+// Parse fixed variables from a text file with lines:
+//   x i u value   (value in {0,1})
+//   y i u j v value (value in {0,1})
+// Indices are 0-based; '#' starts a comment line.
+static bool parse_fixed_file(const std::string &path, int n, FixedVariables &out) {
+    std::ifstream in(path);
+    if (!in.is_open()) {
+        std::cerr << "Error: cannot open fixed-variable file: " << path << std::endl;
+        return false;
+    }
+    std::string line;
+    int lineno = 0;
+    while (std::getline(in, line)) {
+        ++lineno;
+        std::string trimmed = line;
+        trimmed.erase(trimmed.begin(), std::find_if(trimmed.begin(), trimmed.end(), [](int ch) { return !std::isspace(ch); }));
+        if (trimmed.empty() || trimmed[0] == '#') continue;
+
+        std::istringstream iss(trimmed);
+        char type;
+        iss >> type;
+        if (type == 'x') {
+            int i, u, val;
+            if (!(iss >> i >> u >> val)) {
+                std::cerr << "Warning: malformed x-line at " << path << ":" << lineno << std::endl;
+                continue;
+            }
+            if (i < 0 || i >= n || u < 0 || u >= n || (val != 0 && val != 1)) {
+                std::cerr << "Warning: invalid indices/value at " << path << ":" << lineno << std::endl;
+                continue;
+            }
+            if (val == 1) {
+                out.x_fixed_1[i] = u;
+            } else {
+                out.x_fixed_0[i].insert(u);
+            }
+        } else if (type == 'y') {
+            int i, u, j, v, val;
+            if (!(iss >> i >> u >> j >> v >> val)) {
+                std::cerr << "Warning: malformed y-line at " << path << ":" << lineno << std::endl;
+                continue;
+            }
+            if (i < 0 || i >= n || u < 0 || u >= n || j < 0 || j >= n || v < 0 || v >= n || (val != 0 && val != 1)) {
+                std::cerr << "Warning: invalid indices/value at " << path << ":" << lineno << std::endl;
+                continue;
+            }
+            int key = key_y(n, i, u, v);
+            if (val == 1) {
+                out.y_fixed_1[key] = j;
+            } else {
+                out.y_fixed_0[key].insert(j);
+            }
+        } else {
+            std::cerr << "Warning: unknown line type at " << path << ":" << lineno << std::endl;
+        }
+    }
+
+    std::cout << "Loaded fixed variables from " << path
+              << " | x1=" << out.x_fixed_1.size()
+              << " x0-rows=" << out.x_fixed_0.size()
+              << " y1=" << out.y_fixed_1.size()
+              << " y0-rows=" << out.y_fixed_0.size() << std::endl;
+    return true;
+}
+
 
 // Summary of primal violations for reporting at end of run
 struct PrimalViolationSummary {
@@ -35,6 +114,17 @@ struct PrimalViolationSummary {
     double link_max = 0.0;
     double link_avg = 0.0;
     int n = 0;
+};
+
+struct FixedViolationReport {
+    int x1_violations = 0;
+    int x0_violations = 0;
+    int y1_violations = 0;
+    int y0_violations = 0;
+    double x1_max_dev = 0.0;
+    double x0_max_dev = 0.0;
+    double y1_max_dev = 0.0;
+    double y0_max_dev = 0.0;
 };
 
 static PrimalViolationSummary compute_primal_violation_summary(const VOL_dvector &psol, int n) {
@@ -109,6 +199,72 @@ static PrimalViolationSummary compute_primal_violation_summary(const VOL_dvector
     return summary;
 }
 
+static FixedViolationReport check_fixed_violations(const FixedVariables &fv, const VOL_dvector &psol, int n, double tol = 1e-6) {
+    FixedViolationReport rep;
+
+    // x fixed to 1
+    for (const auto &kv : fv.x_fixed_1) {
+        int i = kv.first;
+        int u = kv.second;
+        double val = psol[i * n + u];
+        double dev = std::abs(val - 1.0);
+        if (dev > tol) {
+            ++rep.x1_violations;
+            rep.x1_max_dev = std::max(rep.x1_max_dev, dev);
+        }
+    }
+
+    // x fixed to 0
+    for (const auto &kv : fv.x_fixed_0) {
+        int i = kv.first;
+        for (int u : kv.second) {
+            double val = psol[i * n + u];
+            double dev = std::abs(val);
+            if (dev > tol) {
+                ++rep.x0_violations;
+                rep.x0_max_dev = std::max(rep.x0_max_dev, dev);
+            }
+        }
+    }
+
+    // y fixed to 1
+    for (const auto &kv : fv.y_fixed_1) {
+        int key = kv.first;
+        int j = kv.second;
+        int i = key / (n * n);
+        int rem = key % (n * n);
+        int u = rem / n;
+        int v = rem % n;
+        int idx = n * n + i * n * n * n + u * n * n + j * n + v;
+        double val = psol[idx];
+        double dev = std::abs(val - 1.0);
+        if (dev > tol) {
+            ++rep.y1_violations;
+            rep.y1_max_dev = std::max(rep.y1_max_dev, dev);
+        }
+    }
+
+    // y fixed to 0
+    for (const auto &kv : fv.y_fixed_0) {
+        int key = kv.first;
+        int i = key / (n * n);
+        int rem = key % (n * n);
+        int u = rem / n;
+        int v = rem % n;
+        for (int j : kv.second) {
+            int idx = n * n + i * n * n * n + u * n * n + j * n + v;
+            double val = psol[idx];
+            double dev = std::abs(val);
+            if (dev > tol) {
+                ++rep.y0_violations;
+                rep.y0_max_dev = std::max(rep.y0_max_dev, dev);
+            }
+        }
+    }
+
+    return rep;
+}
+
 // Macro definitions for cleaner indexing
 #define mu(u) (pi[u])
 #define lambda(i, u, j, v) (pi[n + (i) * n * n * n + (u) * n * n + (j) * n + (v)])
@@ -132,6 +288,13 @@ private:
     std::vector<int> beta_j_ind;    // j that achieves beta[i,u,v]
     std::vector<double> alpha;      // alpha[i] = min_u cost of x[i,u]=1
     std::vector<int> alpha_u_ind;   // u that achieves alpha[i]
+
+    // Fixed variables
+    FixedVariables fixed;
+    std::unordered_map<int, int> x_fixed_1;                    // i -> u
+    std::unordered_map<int, std::unordered_set<int>> x_fixed_0; // i -> {u}
+    std::unordered_map<int, int> y_fixed_1;                    // key(i,u,v) -> j
+    std::unordered_map<int, std::unordered_set<int>> y_fixed_0; // key(i,u,v) -> {j}
     
 public:
     RTL1VolumeHooks(const Problem& data) 
@@ -140,6 +303,14 @@ public:
         beta_j_ind.resize(n * n * n);
         alpha.resize(n);
         alpha_u_ind.resize(n);
+    }
+
+    void set_fixed_variables(const FixedVariables &fv) {
+        fixed = fv;
+        x_fixed_1 = fv.x_fixed_1;
+        x_fixed_0 = fv.x_fixed_0;
+        y_fixed_1 = fv.y_fixed_1;
+        y_fixed_0 = fv.y_fixed_0;
     }
     
     // Compute reduced costs (not used in RTL1 subproblem)
@@ -185,31 +356,43 @@ public:
                 for (int v = 0; v < n; ++v) {
                     double min_cost = DBL_MAX;
                     int best_j = 0;
-                    
-                    for (int j = 0; j < n; ++j) {
-                        // Cost of setting y[i,u,j,v] = 1 (original objective)
+
+                    int ykey = key_y(n, i, u, v);
+                    auto it_y1 = y_fixed_1.find(ykey);
+                    if (it_y1 != y_fixed_1.end()) {
+                        int j = it_y1->second;
                         double cost = qap_data.D[i][j] * qap_data.F[u][v];
-
-                        // Symmetry dual counted once: -lambda(i,u,j,v) if i<=j, +lambda(j,v,i,u) if i>=j
-                        if (i <= j) {
-                            cost -= lambda(i, u, j, v);
-                        }
-                        if (i >= j) {
-                            cost += lambda(j, v, i, u);
-                        }
-
-                        // Linking dual: -theta(i,u,j)
+                        if (i <= j) cost -= lambda(i, u, j, v);
+                        if (i >= j) cost += lambda(j, v, i, u);
                         cost -= theta(i, u, j);
-
-                        if (cost < min_cost) {
-                            min_cost = cost;
-                            best_j = j;
+                        min_cost = cost;
+                        best_j = j;
+                    } else {
+                        const auto it_y0 = y_fixed_0.find(ykey);
+                        for (int j = 0; j < n; ++j) {
+                            if (it_y0 != y_fixed_0.end() && it_y0->second.count(j)) {
+                                continue; // skip fixed-to-zero y
+                            }
+                            double cost = qap_data.D[i][j] * qap_data.F[u][v];
+                            if (i <= j) cost -= lambda(i, u, j, v);
+                            if (i >= j) cost += lambda(j, v, i, u);
+                            cost -= theta(i, u, j);
+                            if (cost < min_cost) {
+                                min_cost = cost;
+                                best_j = j;
+                            }
                         }
                     }
-                    
+
                     int idx = i * n * n + u * n + v;
-                    beta[idx] = min_cost;
-                    beta_j_ind[idx] = best_j;
+                    if (min_cost == DBL_MAX) {
+                        std::cerr << "Warning: no feasible j for y[" << i << "," << u << ",*," << v << "] under fixed variables; choosing j=0 with large cost." << std::endl;
+                        beta[idx] = 1e30;
+                        beta_j_ind[idx] = 0;
+                    } else {
+                        beta[idx] = min_cost;
+                        beta_j_ind[idx] = best_j;
+                    }
                 }
             }
         }
@@ -219,30 +402,46 @@ public:
         for (int i = 0; i < n; ++i) {
             double min_cost = DBL_MAX;
             int best_u = 0;
-            
-            for (int u = 0; u < n; ++u) {
-                // Assignment dual penalty: -mu[u]
+
+            // If x[i,*] has a fixed 1, only evaluate that u
+            auto it_x1 = x_fixed_1.find(i);
+            if (it_x1 != x_fixed_1.end()) {
+                int u = it_x1->second;
                 double cost = -mu(u);
-                
-                // Linking dual penalty: sum_j theta[i,u,j]
-                for (int j = 0; j < n; ++j) {
-                    cost += theta(i, u, j);
-                }
-                
-                // Add beta costs for all v (third index) plus linking penalty already added above
+                for (int j = 0; j < n; ++j) cost += theta(i, u, j);
                 for (int v = 0; v < n; ++v) {
                     int idx = i * n * n + u * n + v;
                     cost += beta[idx];
                 }
-                
-                if (cost < min_cost) {
-                    min_cost = cost;
-                    best_u = u;
+                min_cost = cost;
+                best_u = u;
+            } else {
+                const auto it_x0 = x_fixed_0.find(i);
+                for (int u = 0; u < n; ++u) {
+                    if (it_x0 != x_fixed_0.end() && it_x0->second.count(u)) {
+                        continue; // fixed to zero
+                    }
+                    double cost = -mu(u);
+                    for (int j = 0; j < n; ++j) cost += theta(i, u, j);
+                    for (int v = 0; v < n; ++v) {
+                        int idx = i * n * n + u * n + v;
+                        cost += beta[idx];
+                    }
+                    if (cost < min_cost) {
+                        min_cost = cost;
+                        best_u = u;
+                    }
                 }
             }
-            
-            alpha[i] = min_cost;
-            alpha_u_ind[i] = best_u;
+
+            if (min_cost == DBL_MAX) {
+                std::cerr << "Warning: no feasible u for fixed variables at facility i=" << i << "; choosing u=0." << std::endl;
+                alpha[i] = 1e30;
+                alpha_u_ind[i] = 0;
+            } else {
+                alpha[i] = min_cost;
+                alpha_u_ind[i] = best_u;
+            }
         }
         
         // STEP 3: Compute Lagrangian lower bound
@@ -353,6 +552,7 @@ int main(int argc, char* argv[]) {
         std::cout << "  --output <file>       Output solution file" << std::endl;
         std::cout << "  --save-dual <file>    Save dual vector and primal solution" << std::endl;
         std::cout << "  --load-dual <file>    Load initial dual vector" << std::endl;
+        std::cout << "  --fixed <file>        Fixed variables file (x/y, 0-based indices)" << std::endl;
         return 1;
     }
     
@@ -364,6 +564,7 @@ int main(int argc, char* argv[]) {
     std::string output_path = "";
     std::string save_dual_path = "";
     std::string load_dual_path = "";
+    std::string fixed_path = "";
     
     for (int i = 2; i < argc; ++i) {
         std::string arg = argv[i];
@@ -379,6 +580,8 @@ int main(int argc, char* argv[]) {
             save_dual_path = argv[++i];
         } else if (arg == "--load-dual" && i + 1 < argc) {
             load_dual_path = argv[++i];
+        } else if (arg == "--fixed" && i + 1 < argc) {
+            fixed_path = argv[++i];
         }
     }
     
@@ -463,6 +666,18 @@ int main(int argc, char* argv[]) {
     
     // Create hooks
     RTL1VolumeHooks hooks(qap_data);
+
+    // Load fixed variables if provided
+    FixedVariables fv;
+    bool has_fixed = false;
+    if (!fixed_path.empty()) {
+        if (parse_fixed_file(fixed_path, n, fv)) {
+            hooks.set_fixed_variables(fv);
+            has_fixed = true;
+        } else {
+            std::cerr << "Error parsing fixed-variable file; continuing without fixed variables." << std::endl;
+        }
+    }
     
     // Determine if we should use loaded dual (warm-start)
     bool use_dual_warmstart = !load_dual_path.empty();
@@ -556,6 +771,17 @@ int main(int argc, char* argv[]) {
         std::cout << "  Linking     -> max: " << vsummary.link_max
                   << ", avg: " << vsummary.link_avg << std::endl;
         std::cout << "  Symmetry    -> included in Max/Avg above" << std::endl;
+        if (has_fixed) {
+            auto frep = check_fixed_violations(fv, vol_problem.psol, n);
+            std::cout << "  Fixed vars  -> x1: " << fv.x_fixed_1.size()
+                      << " (viol " << frep.x1_violations << ", max dev " << frep.x1_max_dev << ")"
+                      << ", x0-rows: " << fv.x_fixed_0.size()
+                      << " (viol " << frep.x0_violations << ", max dev " << frep.x0_max_dev << ")"
+                      << ", y1: " << fv.y_fixed_1.size()
+                      << " (viol " << frep.y1_violations << ", max dev " << frep.y1_max_dev << ")"
+                      << ", y0-rows: " << fv.y_fixed_0.size()
+                      << " (viol " << frep.y0_violations << ", max dev " << frep.y0_max_dev << ")" << std::endl;
+        }
     }
     
     std::cout << "==================================================" << std::endl;

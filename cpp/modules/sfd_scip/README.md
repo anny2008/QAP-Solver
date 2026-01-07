@@ -72,6 +72,35 @@ Options:
 ./sfd_solver had12.dat --relax --log
 ```
 
+## Unified interface (recommended)
+
+Use the repository-wide runner to build and launch modules from the repo root:
+
+```bash
+# Build SFD and RTL1 C++ binaries
+python tools/qap_cli.py build --module sfd_scip rtl1_scip
+
+# Run SFD (SCIP) with the JSON config
+python tools/qap_cli.py run --module sfd_scip --config configs/sfd_scip.json
+
+# Run SFD (SCIP) on a custom instance with overrides
+python tools/qap_cli.py run --module sfd_scip --instance /path/to/instance.dat \
+  --warmstart /path/to/instance.sln --time-limit 300 --threads 8 --log
+
+# Run RTL1 (CPLEX Python) using its config
+python tools/qap_cli.py run --module rtl1_cplex --instance /path/to/instance.dat \
+  --config configs/rtl1_cplex.json --output rtl1_result.json
+```
+
+Modules supported by the runner:
+- `sfd_scip` (C++ binary)
+- `rtl1_scip` (C++ binary)
+- `rtl1_volume` (C++ binary)
+- `rtl1_cplex` (Python, docplex/cplex required)
+- `rtl1_scip_py` (Python, PySCIPOpt required)
+- `sfd_cplex` (Python, requires decomposition wiring)
+- `local_search` (Python, heuristics placeholder)
+
 ## Algorithm
 
 The SFD formulation decomposes the QAP flow matrix into subgraphs and introduces:

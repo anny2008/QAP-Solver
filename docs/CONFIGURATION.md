@@ -22,6 +22,26 @@ configs/
 
 ## Module Schemas
 
+### RTL1 SCIP (C++)
+
+The C++ RTL1 with SCIP supports a `relaxation` option to choose between the default SCIP behavior and a custom Volume-based relaxation handler:
+
+```json
+{
+  "solver": "rtl1_scip",
+  "formulation": "rtl1",
+  "instance": "data/chr12a.dat",
+  "time_limit": 120,
+  "threads": 8,
+  "log_output": true,
+  "relaxation": "volume"  // or "default"
+  "relaxation_info": true  // print extra info from relaxation handler
+}
+```
+
+- relaxation: "volume" uses the custom Volume relaxation; "default" disables it and relies on SCIP's default relaxation.
+- relaxation_info: if true, prints relaxation value, number of fixed x/y variables, and violation summary at each call.
+
 ### RTL1 CPLEX
 
 **Schema** (`python/qap/modules/rtl1_cplex/config_schema.json`):
