@@ -2,21 +2,24 @@
 """Unified build/run interface for QAP-Solver modules.
 
 Supports:
-- C++ binaries: sfd_scip, rtl1_scip
+- C++ binaries: sfd_scip, rtl1_scip, local_search (2-opt, ils, tabu)
 - Python solvers: rtl1_cplex, rtl1_scip_py
 
 Examples:
-  # Build C++ modules
-  python tools/qap_cli.py build --module sfd_scip rtl1_scip
+    # Build C++ modules
+    python tools/qap_cli.py build --module sfd_scip rtl1_scip local_search
 
-  # Run SFD (SCIP) with config
-  python tools/qap_cli.py run --module sfd_scip --config configs/sfd_scip.json
+    # Run Local Search (tabu search) with config
+    python tools/qap_cli.py run --module local_search --config configs/local_search.json
 
-  # Run RTL1 (SCIP C++) with instance and warmstart
-  python tools/qap_cli.py run --module rtl1_scip --instance data/chr12a.dat --warmstart data/chr12a.sln --threads 8 --time-limit 300
+    # Run SFD (SCIP) with config
+    python tools/qap_cli.py run --module sfd_scip --config configs/sfd_scip.json
 
-  # Run RTL1 (CPLEX Python) using config and write output JSON
-  python tools/qap_cli.py run --module rtl1_cplex --instance data/chr12a.dat --config configs/rtl1_cplex.json --output results.json
+    # Run RTL1 (SCIP C++) with instance and warmstart
+    python tools/qap_cli.py run --module rtl1_scip --instance data/chr12a.dat --warmstart data/chr12a.sln --threads 8 --time-limit 300
+
+    # Run RTL1 (CPLEX Python) using config and write output JSON
+    python tools/qap_cli.py run --module rtl1_cplex --instance data/chr12a.dat --config configs/rtl1_cplex.json --output results.json
 """
 
 from __future__ import annotations
@@ -27,7 +30,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -125,6 +128,51 @@ def run_rtl1_scip_cpp(args: "Args", spec: ModuleSpec) -> int:
 
     return _run_subprocess(cmd, spec.workdir)
 
+def run_sfd_volume(args: "Args", spec: ModuleSpec) -> int:
+    if not spec.binary:
+        raise ValueError("Missing binary path for sfd_volume")
+    # Load config if provided
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("RTL1 Volume requires --instance or instance in config")
+    else:
+        print(f"[info] using instance: {instance}")
+
+    cmd = [str(spec.binary), str(_resolve_path(instance))]
+
+    # Time limit: CLI > config > default
+    time_limit = args.time_limit or config.get("time_limit")
+    if time_limit is not None:
+        cmd += ["--time", str(time_limit)]
+    
+    # Threads: CLI > config > default
+    threads = args.threads or config.get("threads")
+    if threads is not None:
+        cmd += ["--threads", str(threads)]
+    
+    # Log: CLI > config
+    if args.log or config.get("log_output", False):
+        cmd.append("--log")
+    
+    if args.output:
+        cmd += ["--output", str(_resolve_path(args.output))]
+    
+    # Dual vector save/load from config
+    save_dual = config.get("save_dual", "")
+    if save_dual:
+        cmd += ["--save-dual", str(_resolve_path(save_dual))]
+    
+    load_dual = config.get("load_dual", "")
+    if load_dual:
+        cmd += ["--load-dual", str(_resolve_path(load_dual))]
+
+    # Fixed variables (file) from CLI or config key "fixed"
+    fixed_path = args.fixed or config.get("fixed")
+    if fixed_path:
+        cmd += ["--fixed", str(_resolve_path(fixed_path))]
+
+    return _run_subprocess(cmd, spec.workdir)
 
 def run_rtl1_volume(args: "Args", spec: ModuleSpec) -> int:
     if not spec.binary:
@@ -235,10 +283,55 @@ def run_sfd_cplex(args: "Args", spec: ModuleSpec) -> int:
 
 
 def run_local_search(args: "Args", spec: ModuleSpec) -> int:
-    # Placeholder: local search heuristics are not implemented in this repo snapshot.
-    raise NotImplementedError(
-        "Local search runner not available: heuristic implementation is absent."
-    )
+    if not spec.binary:
+        raise ValueError("Missing binary path for local_search")
+    # Use default config if not specified
+    config_path = args.config if args.config else str(spec.default_config)
+    config = _load_config(config_path, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("Local search requires --instance or instance in config")
+    cmd = [str(spec.binary), str(_resolve_path(instance))]
+    # Always pass config file (default or specified)
+    cmd += ["--config", str(_resolve_path(config_path))]
+    # Output file
+    if args.output:
+        cmd += ["--output", str(_resolve_path(args.output))]
+    # Max iterations
+    max_iter = config.get("max_iterations")
+    if max_iter is not None:
+        cmd += ["--max-iterations", str(max_iter)]
+    # Tabu tenure (for tabu search)
+    tabu_tenure = config.get("tabu_tenure")
+    if tabu_tenure is not None:
+        cmd += ["--tabu-tenure", str(tabu_tenure)]
+    # Initial solution type
+    init_sol = config.get("initial_solution")
+    if init_sol:
+        cmd += ["--initial-solution", init_sol]
+    # Seed
+    seed = config.get("seed")
+    if seed is not None:
+        cmd += ["--seed", str(seed)]
+    # Time limit
+    time_limit = args.time_limit or config.get("time_limit")
+    if time_limit is not None:
+        cmd += ["--time", str(time_limit)]
+    # Log
+    if args.log or config.get("log_output", False):
+        cmd.append("--log")
+    print(f"[run] {' '.join(cmd)} (cwd={spec.workdir})")
+    
+    # Frequency penalty weight (for robust tabu search)
+    freq_penalty_weight = config.get("freq_penalty_weight")
+    if freq_penalty_weight is not None:
+        cmd += ["--freq-penalty-weight", str(freq_penalty_weight)]
+    # Assignment penalty weight (for robust tabu search)
+    assign_penalty_weight = config.get("assign_penalty_weight")
+    if assign_penalty_weight is not None:
+        cmd += ["--assign-penalty-weight", str(assign_penalty_weight)]
+    result = subprocess.run(cmd, cwd=spec.workdir)
+    return result.returncode
 
 
 # Helpers --------------------------------------------------------------------
@@ -315,6 +408,15 @@ MODULES: Dict[str, ModuleSpec] = {
         default_config=ROOT / "configs/sfd_scip.json",
         runner=run_sfd_scip,
     ),
+    "sfd_volume": ModuleSpec(
+        name="sfd_volume",
+        kind="cpp",
+        workdir=ROOT / "cpp/modules/sfd_volume",
+        binary=ROOT / "cpp/modules/sfd_volume/sfd_volume_solver",
+        build_cmd=["make"],
+        default_config=ROOT / "configs/sfd_volume.json",
+        runner=run_sfd_volume,
+    ),
     "rtl1_scip": ModuleSpec(
         name="rtl1_scip",
         kind="cpp",
@@ -356,9 +458,11 @@ MODULES: Dict[str, ModuleSpec] = {
     ),
     "local_search": ModuleSpec(
         name="local_search",
-        kind="python",
-        workdir=ROOT,
-        default_config=ROOT / "python/qap/modules/local_search/example_config.json",
+        kind="cpp",
+        workdir=ROOT / "cpp/modules/local_search",
+        binary=ROOT / "cpp/modules/local_search/local_search_solver",
+        build_cmd=["make"],
+        default_config=ROOT / "configs/local_search.json",
         runner=run_local_search,
     ),
 }

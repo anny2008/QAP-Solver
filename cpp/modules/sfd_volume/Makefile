@@ -1,12 +1,12 @@
-# Makefile for RTL1 Volume Solver
+# Makefile for sfd Volume Solver
 
 CXX = g++
 CXXFLAGS = -std=c++17 -O3 -Wall -Wextra -fopenmp
 
 # Source files
-SRC = rtl1_volume_solver.cpp VolVolume.cpp
-OBJ = rtl1_volume_solver.o VolVolume.o
-EXE = rtl1_volume_solver
+SRC = sfd_volume_solver.cpp VolVolume.cpp
+OBJ = sfd_volume_solver.o VolVolume.o
+EXE = sfd_volume_solver
 
 # Build rules
 all: $(EXE)

@@ -37,3 +37,40 @@ Thumbs.db
 build/
 dist/
 *.egg-info/
+
+# C++ compiled files
+*.o
+*.so
+*.a
+*.out
+
+# C++ executables (solver binaries in modules)
+cpp/modules/*/sfd_solver
+cpp/modules/*/rtl1_solver
+cpp/modules/*/rtl1_volume_solver
+cpp/modules/*/*.out
+
+# Result and log files
+*.log
+result.json
+results.json
+*_result.json
+*_results.json
+
+# Solution files (generated outputs)
+*.sln
+
+# Jupyter notebooks (testing/analysis)
+*.ipynb
+
+# CMake build artifacts
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile.cmake
+
+# Data files (instances should be external)
+*.dat
+
+# Temporary Python utilities (experimental)
+python/qap/utils/

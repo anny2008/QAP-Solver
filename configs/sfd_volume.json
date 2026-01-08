@@ -1,0 +1,12 @@
+{
+  "solver": "sfd_volume",
+  "formulation": "sfd",
+  "instance": "/home/local.isima.fr/antran/UFF/QAP_New_formulation/data/QAPLIB/nug12.dat",
+  "time_limit": 120,
+  "threads": 8,
+  "log_output": true,
+  "save_dual": "results/sfd_dual.bin",
+  "load_dual": "results/sfd_dual.bin",
+  "fixed": "configs/fixed_x00.txt",
+  "description": "SFD Volume Algorithm solver using Lagrangian relaxation for lower bounds"
+}
