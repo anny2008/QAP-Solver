@@ -16,6 +16,50 @@
 class LocalSearch {
 public:
     /**
+     * Iterated Tabu Search for QAP (as in literature, e.g., Misevičius 2008).
+     * Repeatedly applies tabu search, perturbs the solution, and tracks the best found.
+     * @param problem QAP instance
+     * @param solution Initial solution (will be improved in-place)
+     * @param outer_iters Number of outer iterations (tabu search runs)
+     * @param tabu_iters Number of iterations for each tabu search
+     * @param tabu_tenure Initial tabu tenure
+     * @param perturb_strength Number of random swaps per perturbation
+     * @param verbose If true, logs progress
+     */
+    static void iteratedTabuSearch(const Problem& problem, Solution& solution, int outer_iters = 10, int tabu_iters = 1000, int tabu_tenure = 10, int perturb_strength = 2, bool verbose = true) {
+        int n = problem.n;
+        std::vector<int> best_perm = solution.assignment;
+        double best_obj = computeObjective(problem, best_perm);
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        auto its_start = std::chrono::high_resolution_clock::now();
+        for (int its_iter = 1; its_iter <= outer_iters; ++its_iter) {
+            Solution current = solution;
+            tabuSearch(problem, current, tabu_iters, tabu_tenure, verbose);
+            double current_obj = current.objective;
+            if (current_obj < best_obj) {
+                best_obj = current_obj;
+                best_perm = current.assignment;
+            }
+            // Log with elapsed time
+            if (verbose) {
+                auto now = std::chrono::high_resolution_clock::now();
+                double elapsed = std::chrono::duration<double>(now - its_start).count();
+                std::cout << "[ITS] Iteration " << its_iter << ", objective = " << current_obj << ", time = " << elapsed << "s" << std::endl;
+            }
+            // Perturbation: random swaps
+            for (int k = 0; k < perturb_strength; ++k) {
+                int i = gen() % n;
+                int j = gen() % n;
+                if (i != j) std::swap(current.assignment[i], current.assignment[j]);
+            }
+            solution.assignment = current.assignment;
+        }
+        solution.assignment = best_perm;
+        solution.objective = best_obj;
+    }
+    
+    /**
      * Robust Tabu Search for QAP (swap-based neighborhood), following Taillard (1991).
      * Key features:
      *  - Adaptive tabu tenure: tabu list length is periodically adjusted to diversify search.

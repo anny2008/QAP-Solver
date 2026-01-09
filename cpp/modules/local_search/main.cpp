@@ -32,6 +32,7 @@ int main(int argc, char* argv[]) {
     int max_iterations = 100;
     int perturb_strength = 2;
     int tabu_tenure = 10;
+    int ils_iterations = 10; // for iterated tabu
     std::string method = "2opt";
 
     // Parse CLI options
@@ -47,6 +48,8 @@ int main(int argc, char* argv[]) {
             output_path = argv[++i];
         } else if (arg == "--tabu-tenure" && i + 1 < argc) {
             tabu_tenure = std::stoi(argv[++i]);
+        } else if (arg == "--ils-iterations" && i + 1 < argc) {
+            ils_iterations = std::stoi(argv[++i]);
         }
     }
 
@@ -83,6 +86,9 @@ int main(int argc, char* argv[]) {
         if (config.contains("tabu_tenure") && config["tabu_tenure"].is_number_integer()) {
             tabu_tenure = config["tabu_tenure"];
         }
+        if (config.contains("ils_iterations") && config["ils_iterations"].is_number_integer()) {
+            ils_iterations = config["ils_iterations"];
+        }
         if (config.contains("method") && config["method"].is_string()) {
             method = config["method"];
         }
@@ -101,6 +107,37 @@ int main(int argc, char* argv[]) {
     } else if (method == "tabu") {
         LocalSearch::tabuSearch(problem, solution, max_iterations, tabu_tenure, true);
         std::cout << "Tabu final objective: " << solution.objective << std::endl;
+    } else if (method == "iterated_tabu") {
+        // Iterated Tabu Search: repeatedly apply tabu search with perturbation
+        int n = problem.n;
+        std::vector<int> best_perm = solution.assignment;
+        double best_obj = LocalSearch::computeObjective(problem, best_perm);
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        auto its_start = std::chrono::high_resolution_clock::now();
+        for (int its_iter = 1; its_iter <= ils_iterations; ++its_iter) {
+            Solution current = solution;
+            LocalSearch::tabuSearch(problem, current, max_iterations, tabu_tenure, true);
+            double current_obj = current.objective;
+            if (current_obj < best_obj) {
+                best_obj = current_obj;
+                best_perm = current.assignment;
+            }
+            // Log with elapsed time
+            auto now = std::chrono::high_resolution_clock::now();
+            double elapsed = std::chrono::duration<double>(now - its_start).count();
+            std::cout << "[ITS] Iteration " << its_iter << ", objective = " << current_obj << ", time = " << elapsed << "s" << std::endl;
+            // Perturbation: random swaps
+            for (int k = 0; k < perturb_strength; ++k) {
+                int i = gen() % n;
+                int j = gen() % n;
+                if (i != j) std::swap(current.assignment[i], current.assignment[j]);
+            }
+            solution.assignment = current.assignment;
+        }
+        solution.assignment = best_perm;
+        solution.objective = best_obj;
+        std::cout << "Iterated Tabu Search final objective: " << solution.objective << std::endl;
     } else {
         bool improved = LocalSearch::improve(problem, solution);
         std::cout << "Improved: " << (improved ? "yes" : "no") << std::endl;
@@ -115,6 +152,7 @@ int main(int argc, char* argv[]) {
     std::cout << "  initial_solution: " << init_method << std::endl;
     std::cout << "  sln_file: " << sln_path << std::endl;
     std::cout << "  tabu_tenure: " << tabu_tenure << std::endl;
+    std::cout << "  ils_iterations: " << ils_iterations << std::endl;
     std::cout << "  output: " << output_path << std::endl;
 
     // Optionally write output file here
