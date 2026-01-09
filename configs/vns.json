@@ -1,0 +1,10 @@
+{
+    "solver": "vns",
+    "instance": "/home/local.isima.fr/antran/UFF/QAP_New_formulation/data/QAPLIB/tai30a.dat",
+    "max_iterations": 50000,
+    "k_max": 10,
+    "neighborhoods": ["swap", "reverse", "insert"],
+    "seed": "time",
+    "initial_solution": "random",
+    "local_search_strategy": "first_improvement"
+}

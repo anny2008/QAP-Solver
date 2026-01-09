@@ -333,6 +333,36 @@ def run_local_search(args: "Args", spec: ModuleSpec) -> int:
     result = subprocess.run(cmd, cwd=spec.workdir)
     return result.returncode
 
+# VNS runner implementation
+def run_vns(args: "Args", spec: ModuleSpec) -> int:
+    if not spec.binary:
+        raise ValueError("Missing binary path for vns")
+    # Load config if provided
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance") or config.get("input_file")
+    if not instance:
+        raise ValueError("VNS requires --instance or instance/input_file in config")
+    cmd = [str(spec.binary), str(_resolve_path(instance))]
+    # Pass config file if specified
+    if args.config:
+        cmd += ["--config", str(_resolve_path(args.config))]
+    # Output file
+    if args.output:
+        cmd += ["--output", str(_resolve_path(args.output))]
+    # Max iterations
+    max_iter = args.time_limit or config.get("max_iterations")
+    if max_iter is not None:
+        cmd += ["--max_iters", str(max_iter)]
+    # Seed
+    seed = config.get("seed")
+    if seed is not None:
+        cmd += ["--seed", str(seed)]
+    # Log
+    if args.log or config.get("log_output", False):
+        cmd.append("--log")
+    print(f"[run] {' '.join(cmd)} (cwd={spec.workdir})")
+    result = subprocess.run(cmd, cwd=spec.workdir)
+    return result.returncode
 
 # Helpers --------------------------------------------------------------------
 
@@ -399,6 +429,15 @@ def _print_solution_summary(solution) -> None:
 # Module registry ------------------------------------------------------------
 
 MODULES: Dict[str, ModuleSpec] = {
+    "vns": ModuleSpec(
+        name="vns",
+        kind="cpp",
+        workdir=ROOT / "cpp/modules/vns",
+        binary=ROOT / "cpp/modules/vns/vns_solver",
+        build_cmd=["make"],
+        default_config=ROOT / "configs/vns.json",
+        runner=run_vns,
+    ),
     "sfd_scip": ModuleSpec(
         name="sfd_scip",
         kind="cpp",
