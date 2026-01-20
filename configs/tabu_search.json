@@ -1,13 +1,13 @@
 {
   "solver": "local_search",
-  "instance": "/home/local.isima.fr/antran/UFF/QAP_New_formulation/data/QAPLIB/tai30a.dat",
+  "instance": "/home/local.isima.fr/antran/UFF/QAP_New_formulation/data/QAPLIB/tai40a.dat",
   "method": "tabu",
   "time_limit": 120,
   "initial_solution": "random",
-  "max_iterations": 50000,
-  "tabu_tenure": 15,
-  "freq_penalty_weight": 0.005,
-  "assign_penalty_weight": 0.035,
+  "max_iterations": 2000,
+  "tabu_tenure": 10,
+  "freq_penalty_weight": 0.001,
+  "assign_penalty_weight": 0.05,
   "perturb_strength": 2,
   "seed": 100,
   "output": "results/local_search_result.json"

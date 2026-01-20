@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 """Unified build/run interface for QAP-Solver modules.
 
@@ -229,10 +230,10 @@ def run_rtl1_cplex(args: "Args", spec: ModuleSpec) -> int:
         print("RTL1 CPLEX solver missing dependencies (docplex/cplex)", file=sys.stderr)
         raise exc
 
-    if not args.instance:
-        raise ValueError("RTL1 CPLEX requires --instance")
-
     config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("RTL1 CPLEX requires --instance")
     solver = RTL1CPLEXSolver(config)
 
     # Warm-start: prefer CLI arg, else use config key 'warmstart' if provided
@@ -243,7 +244,7 @@ def run_rtl1_cplex(args: "Args", spec: ModuleSpec) -> int:
         warmstart_path = str(_resolve_path(config["warmstart"]))
 
     solution = solver.solve_instance(
-        instance_path=str(_resolve_path(args.instance)),
+        instance_path=str(_resolve_path(instance)),
         output_path=str(_resolve_path(args.output)) if args.output else None,
         warmstart_path=warmstart_path,
     )
@@ -259,13 +260,14 @@ def run_rtl1_scip_py(args: "Args", spec: ModuleSpec) -> int:
         print("RTL1 SCIP Python solver missing dependencies (PySCIPOpt)", file=sys.stderr)
         raise exc
 
-    if not args.instance:
+    instance = args.instance or config.get("instance")
+    if not instance:
         raise ValueError("RTL1 SCIP Python requires --instance")
 
     config = _load_config(args.config, spec.default_config)
     solver = RTL1SCIPSolver(config)
     solution = solver.solve_instance(
-        instance_path=str(_resolve_path(args.instance)),
+        instance_path=str(_resolve_path(instance)),
         output_path=str(_resolve_path(args.output)) if args.output else None,
         warmstart_path=str(_resolve_path(args.warmstart)) if args.warmstart else None,
     )
@@ -364,6 +366,22 @@ def run_vns(args: "Args", spec: ModuleSpec) -> int:
     result = subprocess.run(cmd, cwd=spec.workdir)
     return result.returncode
 
+# Gilmore-Lawler runner implementation
+def run_gilmore_lawler(args: "Args", spec: ModuleSpec) -> int:
+    if not spec.binary:
+        raise ValueError("Missing binary path for gilmore_lawler")
+    config_path = args.config if args.config else str(spec.default_config)
+    config = _load_config(config_path, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("Gilmore-Lawler requires --instance or instance in config")
+    cmd = [str(spec.binary), str(_resolve_path(instance))]
+    # Always pass config file (default or specified)
+    if args.config or spec.default_config:
+        cmd += ["--config", str(_resolve_path(config_path))]
+    print(f"[run] {' '.join(cmd)} (cwd={spec.workdir})")
+    result = subprocess.run(cmd, cwd=spec.workdir)
+    return result.returncode
 # Helpers --------------------------------------------------------------------
 
 def _resolve_path(path_str: str) -> Path:
@@ -428,7 +446,51 @@ def _print_solution_summary(solution) -> None:
 
 # Module registry ------------------------------------------------------------
 
+def run_ga(args: "Args", spec: ModuleSpec) -> int:
+    if not spec.binary:
+        raise ValueError("Missing binary path for ga")
+    # Use default config if not specified
+    config_path = args.config if args.config else str(spec.default_config)
+    config = _load_config(config_path, spec.default_config)
+    instance = args.instance or config.get("instance") or config.get("input_file")
+    if not instance:
+        raise ValueError("GA requires --instance or instance/input_file in config")
+    cmd = [str(spec.binary), str(_resolve_path(instance))]
+    # Always pass config file (default or specified)
+    cmd += ["--config", str(_resolve_path(config_path))]
+    # Output file
+    if args.output:
+        cmd += ["--output", str(_resolve_path(args.output))]
+    # Seed
+    seed = config.get("seed")
+    if seed is not None:
+        cmd += ["--seed", str(seed)]
+    # Log
+    if args.log or config.get("log_output", False):
+        cmd.append("--log")
+    print(f"[run] {' '.join(cmd)} (cwd={spec.workdir})")
+    result = subprocess.run(cmd, cwd=spec.workdir)
+    return result.returncode
+
 MODULES: Dict[str, ModuleSpec] = {
+    "gilmore_lawler": ModuleSpec(
+        name="gilmore_lawler",
+        kind="cpp",
+        workdir=ROOT / "cpp/modules/gilmore_lawler",
+        binary=ROOT / "cpp/modules/gilmore_lawler/gilmore_lawler_solver",
+        build_cmd=["make"],
+        default_config=ROOT / "configs/gilmore_lawler.json",
+        runner=run_gilmore_lawler,
+    ),
+    "ga": ModuleSpec(
+        name="ga",
+        kind="cpp",
+        workdir=ROOT / "cpp/modules/ga",
+        binary=ROOT / "cpp/modules/ga/ga_solver",
+        build_cmd=["make"],
+        default_config=ROOT / "configs/ga.json",
+        runner=run_ga,
+    ),
     "vns": ModuleSpec(
         name="vns",
         kind="cpp",
