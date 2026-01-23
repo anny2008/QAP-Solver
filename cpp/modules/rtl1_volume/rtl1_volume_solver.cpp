@@ -271,14 +271,23 @@ static FixedViolationReport check_fixed_violations(const FixedVariables &fv, con
 #define theta(i, u, j) (pi[n + n * n * n * n + (i) * n * n + (u) * n + (j)])
 #define x(i, u) (psol[(i) * n + (u)])
 #define y(i, u, j, v) (psol[n * n + (i) * n * n * n + (u) * n * n + (j) * n + (v)])
+#define z(i, u, j, v) (zsol[(i) * n * n * n + (u) * n * n + (j) * n + (v)])
 #define vio_mu(u) (vio[u])
 #define vio_lambda(i, u, j, v) (vio[n + (i) * n * n * n + (u) * n * n + (j) * n + (v)])
 #define vio_theta(i, u, j) (vio[n + n * n * n * n + (i) * n * n + (u) * n + (j)])
+#define mu1(u) (pi[u])
+#define mu2(i) (pi[n+i])
+#define theta1(i, u, v) (pi[2*n + (i) * n * n + (u) * n + (v)])
+#define theta2(i, u, j) (pi[2*n + n*n*n + (i) * n * n + (u) * n + (j)])
+#define vio_mu1(u) (vio[u])
+#define vio_mu2(i) (vio[n+i])
+#define vio_theta1(i, u, v) (vio[2*n + (i) * n * n + (u) * n + (v)])
+#define vio_theta2(i, u, j) (vio[2*n + n*n*n + (i) * n * n + (u) * n + (j)])
 
 /**
  * RTL1 Volume Hooks Implementation
  */
-class RTL1VolumeHooks : public VOL_user_hooks {
+class RTL1VolumeHooks1 : public VOL_user_hooks {
 private:
     const Problem& qap_data;
     int n;
@@ -297,7 +306,7 @@ private:
     std::unordered_map<int, std::unordered_set<int>> y_fixed_0; // key(i,u,v) -> {j}
     
 public:
-    RTL1VolumeHooks(const Problem& data) 
+    RTL1VolumeHooks1(const Problem& data) 
         : qap_data(data), n(data.n) {
         beta.resize(n * n * n);
         beta_j_ind.resize(n * n * n);
@@ -305,20 +314,6 @@ public:
         alpha_u_ind.resize(n);
     }
 
-    void set_fixed_variables(const FixedVariables &fv) {
-        fixed = fv;
-        x_fixed_1 = fv.x_fixed_1;
-        x_fixed_0 = fv.x_fixed_0;
-        y_fixed_1 = fv.y_fixed_1;
-        y_fixed_0 = fv.y_fixed_0;
-    }
-    
-    // Compute reduced costs (not used in RTL1 subproblem)
-    virtual int compute_rc(const VOL_dvector& /*pi*/, VOL_dvector& rc) override {
-        rc = 0;
-        return 0;
-    }
-    
     /**
      * Solve RTL1 Lagrangian Subproblem
      * 
@@ -339,9 +334,9 @@ public:
      *   3. Set x[i,u]=1 for u minimizing alpha[i]
      *   4. Set y[i,u,j,v]=1 for j minimizing beta[i,u,v]
      */
-    virtual int solve_subproblem(const VOL_dvector& pi, const VOL_dvector& /*rc*/,
+    int solve_subproblem_1(const VOL_dvector& pi,
                                 double& lcost, VOL_dvector& psol, VOL_dvector& vio,
-                                double& pcost) override {
+                                double& pcost) {
         
         // Initialize working arrays
         std::fill(beta.begin(), beta.end(), 0.0);
@@ -518,17 +513,235 @@ public:
         }
         
         // Violation of symmetry constraints: y[j,v,i,u] - y[i,u,j,v]
-        #pragma omp parallel for collapse(4) schedule(static)
+        #pragma omp parallel for collapse(3) schedule(static)
         for (int i = 0; i < n; ++i) {
             for (int u = 0; u < n; ++u) {
-                for (int j = 0; j < n; ++j) {
                     for (int v = 0; v < n; ++v) {
+                for (int j = i; j < n; ++j) {
                         vio_lambda(i, u, j, v) = y(j, v, i, u) - y(i, u, j, v);
                     }
                 }
             }
         }
         
+        return 0;
+    }
+
+    void set_fixed_variables(const FixedVariables &fv) {
+        fixed = fv;
+        x_fixed_1 = fv.x_fixed_1;
+        x_fixed_0 = fv.x_fixed_0;
+        y_fixed_1 = fv.y_fixed_1;
+        y_fixed_0 = fv.y_fixed_0;
+    }
+    
+    // Compute reduced costs (not used in RTL1 subproblem)
+    virtual int compute_rc(const VOL_dvector& /*pi*/, VOL_dvector& rc) override {
+        rc = 0;
+        return 0;
+    }
+    
+    virtual int solve_subproblem(const VOL_dvector& pi, const VOL_dvector& /*rc*/,
+                                double& lcost, VOL_dvector& psol, VOL_dvector& vio,
+                                double& pcost) override {
+                                    return solve_subproblem_1(pi, lcost, psol, vio, pcost);
+                                }
+    
+    // Simple heuristic: extract assignment from x variables
+    virtual int heuristics(const VOL_problem& /*p*/, const VOL_dvector& psol,
+                          double& heur_val) override {
+        return 0;  // Found feasible solution
+    }
+};
+    
+class RTL1VolumeHooks2 : public VOL_user_hooks {
+private:
+    const Problem& qap_data;
+    int n;
+    
+
+    // Fixed variables
+    FixedVariables fixed;
+    std::unordered_map<int, int> x_fixed_1;                    // i -> u
+    std::unordered_map<int, std::unordered_set<int>> x_fixed_0; // i -> {u}
+    std::unordered_map<int, int> y_fixed_1;                    // key(i,u,v) -> j
+    std::unordered_map<int, std::unordered_set<int>> y_fixed_0; // key(i,u,v) -> {j}
+public:
+    RTL1VolumeHooks2(const Problem& data): qap_data(data), n(data.n) {}
+
+    void set_fixed_variables(const FixedVariables &fv) {
+        fixed = fv;
+        x_fixed_1 = fv.x_fixed_1;
+        x_fixed_0 = fv.x_fixed_0;
+        y_fixed_1 = fv.y_fixed_1;
+        y_fixed_0 = fv.y_fixed_0;
+    }
+    
+    virtual int solve_subproblem(const VOL_dvector& pi, const VOL_dvector& /*rc*/,
+                                double& lcost, VOL_dvector& psol, VOL_dvector& vio,
+                                double& pcost) override {
+                                    return solve_subproblem_2(pi, lcost, psol, vio, pcost);
+                                }
+    
+    
+    int solve_subproblem_2(const VOL_dvector& pi,
+                            double& lcost, VOL_dvector& psol, VOL_dvector& vio,
+                            double& pcost) {
+        // Alternative subproblem solver for RTL1 (Volume algorithm)
+        // Step 1: Initialize costs and solution vectors
+        lcost = 0.0;
+        pcost = 0.0;
+        psol = 0.0; // Set all primal variables to zero
+
+        // Step 2: Set y variables by checking reduced cost for each (i,u,j,v) and its symmetric (j,v,i,u)
+        // If the reduced cost (coeff_y) is negative, set both y(i,u,j,v) and y(j,v,i,u) to 1 (symmetry)
+        #pragma omp parallel for collapse(3) schedule(static)
+        for (int i = 0; i < n; ++i) {
+            for (int u = 0; u < n; ++u) {
+                for (int v = 0; v < n; ++v) {
+                    for (int j = i; j < n; ++j) {
+                        // Compute reduced cost for y(i,u,j,v)
+                        double coeff_y = qap_data.D[i][j] * qap_data.F[u][v]
+                                     + qap_data.D[j][i] * qap_data.F[v][u]
+                                     - theta1(i, u, v) - theta1(j, v, u)
+                                     - theta2(i, u, j) - theta2(j, v, i);
+                        // If negative, set y(i,u,j,v) and y(j,v,i,u) to 1 (enforce symmetry)
+                        if (coeff_y < 0) {
+                            y(i, u, j, v) = 1.0;
+                            y(j, v, i, u) = 1.0;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Step 3: Set x variables by checking reduced cost for each (i,u)
+        // If the reduced cost (coeff_x) is negative, set x(i,u) = 1
+        #pragma omp parallel for collapse(2) schedule(static)
+        for (int i = 0; i < n; ++i) {
+            for (int u = 0; u < n; ++u) {
+                // Compute reduced cost for x(i,u)
+                double coeff_x = -mu1(u) - mu2(i);
+                for (int v = 0; v < n; ++v) {
+                    auto j = v;
+                    coeff_x += theta1(i, u, v) + theta2(i, u, j);
+                }
+                // If negative, set x(i,u) = 1
+                if (coeff_x < 0) {
+                    x(i, u) = 1.0;
+                }
+            }
+        }
+        // Step 4: Compute constraint violations for the current solution
+        vio = 0.0;
+
+        // Assignment constraint 1: For each u, sum_i x[i,u] should be 1
+        // Store violation in vio_mu1(u) = 1 - sum_i x[i,u]
+        #pragma omp parallel for schedule(static)
+        for (int u = 0; u < n; ++u) {
+            double sum = 0.0;
+            for (int i = 0; i < n; ++i) {
+                sum += x(i, u);
+            }
+            vio_mu1(u) = 1.0 - sum;
+        }
+
+        // Assignment constraint 2: For each i, sum_u x[i,u] should be 1
+        // Store violation in vio_mu2(i) = 1 - sum_u x[i,u]
+        #pragma omp parallel for schedule(static)
+        for (int i = 0; i < n; ++i) {
+            double sum = 0.0;
+            for (int u = 0; u < n; ++u) {
+                sum += x(i, u);
+            }
+            vio_mu2(i) = 1.0 - sum;
+        }
+
+        // Linking constraint 2: For each (i,u,v), x[i,u] = sum_j y[i,u,j,v]
+        // Store violation in vio_theta1(i,u,v) = x[i,u] - sum_j y[i,u,j,v]
+        #pragma omp parallel for collapse(3) schedule(static)
+        for (int i = 0; i < n; ++i) {
+            for (int u = 0; u < n; ++u) {
+                for (int v = 0; v < n; ++v) {
+                    double sum = 0.0;
+                    for (int j = 0; j < n; ++j) {
+                        sum += y(i, u, j, v);
+                    }
+                    vio_theta1(i, u, v) = x(i, u) - sum;
+                }
+            }
+        }
+
+        // Linking constraint 1: For each (i,u,j), x[i,u] = sum_v y[i,u,j,v]
+        // Store violation in vio_theta2(i,u,j) = x[i,u] - sum_v y[i,u,j,v]
+        #pragma omp parallel for collapse(3) schedule(static)
+        for (int i = 0; i < n; ++i) {
+            for (int u = 0; u < n; ++u) {
+                for (int j = 0; j < n; ++j) {
+                    double sum = 0.0;
+                    for (int v = 0; v < n; ++v) {
+                        sum += y(i, u, j, v);
+                    }
+                    vio_theta2(i, u, j) = x(i, u) - sum;
+                }
+            }
+        }
+
+        // Step 5: Compute primal cost (QAP objective value for current y)
+        pcost = 0.0;
+        #pragma omp parallel for collapse(2) reduction(+:pcost) schedule(static)
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < n; ++j) {
+                for (int u = 0; u < n; ++u) {
+                    for (int v = 0; v < n; ++v) {
+                        pcost += qap_data.D[i][j] * qap_data.F[u][v] * y(i, u, j, v);
+                    }
+                }
+            }
+        }
+
+        // Step 6: Compute Lagrangian cost (objective + penalty for constraint violations)
+        lcost = pcost;
+        // Add penalties for assignment constraint violations
+        #pragma omp parallel for reduction(+:lcost) schedule(static)
+        for (int i = 0; i < n; ++i) {
+            lcost += mu2(i)*vio_mu2(i) + mu1(i)*vio_mu1(i);
+        }
+
+        // Add penalties for linking constraint violations
+        #pragma omp parallel for collapse(3) reduction(+:lcost) schedule(static)
+        for (int i = 0; i < n; ++i) {
+            for (int u = 0; u < n; ++u) {
+                for (int j = 0; j < n; ++j) {
+                    auto v = j;
+                    lcost += theta2(i,u,j)*vio_theta2(i,u,j) + theta1(i,u,v)*vio_theta1(i,u,v);
+                }
+            }
+        }
+
+        // for (auto u= 0; u < n; ++u) {
+        //     std::cout << "Vio u[" << u << "] = " << vio_mu1(u) << std::endl;
+        // }
+        // for (auto i= 0; i < n; ++i) {
+        //     std::cout << "Vio i[" << i << "] = " << vio_mu2(i) << std::endl;
+        // }
+
+        auto total_vio = 0.0;
+        #pragma omp parallel for reduction(+:total_vio) schedule(static)
+        for (int k = 0; k < vio.size(); ++k) {
+            total_vio += vio[k];
+        }
+        // std::cout << "Total violation: " << total_vio << std::endl;
+
+        // Print costs for debugging
+        // std::cout << "Primal cost: " << pcost << ", Lagrangian cost: " << lcost << std::endl;
+
+        return 0;
+    }
+
+    // Compute reduced costs (not used in RTL1 subproblem)
+    virtual int compute_rc(const VOL_dvector& /*pi*/, VOL_dvector& rc) override {
+        rc = 0;
         return 0;
     }
     
@@ -538,6 +751,561 @@ public:
         return 0;  // Found feasible solution
     }
 };
+
+class RTL1VolumeHooks3 : public VOL_user_hooks {
+private:
+    const Problem& qap_data;
+    int n;
+
+
+    std::vector<double> zsol; // working array for z variables 
+    // Fixed variables
+    FixedVariables fixed;
+    std::unordered_map<int, int> x_fixed_1;                    // i -> u
+    std::unordered_map<int, std::unordered_set<int>> x_fixed_0; // i -> {u}
+    std::unordered_map<int, int> y_fixed_1;                    // key(i,u,v) -> j
+    std::unordered_map<int, std::unordered_set<int>> y_fixed_0; // key(i,u,v) -> {j}
+public:
+    RTL1VolumeHooks3(const Problem& data): qap_data(data), n(data.n) {
+        zsol.resize(n * n * n * n);
+    }
+
+    void set_fixed_variables(const FixedVariables &fv) {
+        fixed = fv;
+        x_fixed_1 = fv.x_fixed_1;
+        x_fixed_0 = fv.x_fixed_0;
+        y_fixed_1 = fv.y_fixed_1;
+        y_fixed_0 = fv.y_fixed_0;
+    }
+    
+    virtual int solve_subproblem(const VOL_dvector& pi, const VOL_dvector& /*rc*/,
+                                double& lcost, VOL_dvector& psol, VOL_dvector& vio,
+                                double& pcost) override {
+                                    return solve_subproblem_3(pi, lcost, psol, vio, pcost);
+                                }
+    int solve_subproblem_3(const VOL_dvector& pi,
+                            double& lcost, VOL_dvector& psol, VOL_dvector& vio,
+                            double& pcost) {
+        // Alternative subproblem solver for RTL1 (Volume algorithm)
+        // Step 1: Initialize costs and solution vectors
+        lcost = 0.0;
+        pcost = 0.0;
+        psol = 0.0; // Set all primal variables to zero
+        std::fill(zsol.begin(), zsol.end(), 0.0);
+
+        // Step 2: Set y variables by checking reduced cost for each (i,u,j,v) and its symmetric (j,v,i,u)
+        // If the reduced cost (coeff_y) is negative, set both y(i,u,j,v) and y(j,v,i,u) to 1 (symmetry)
+        #pragma omp parallel for collapse(3) schedule(static)
+        for (int i = 0; i < n; ++i) {
+            for (int u = 0; u < n; ++u) {
+                for (int v = 0; v < n; ++v) {
+                    for (int j = i; j < n; ++j) {
+                        // Compute reduced cost for y(i,u,j,v)
+                        double coeff_y = qap_data.D[i][j] * qap_data.F[u][v]
+                                     + qap_data.D[j][i] * qap_data.F[v][u]
+                                     - theta1(i, u, v) - theta1(j, v, u)
+                                     - theta2(i, u, j) - theta2(j, v, i);
+                        // If negative, set y(i,u,j,v) and y(j,v,i,u) to 1 (enforce symmetry)
+                        if (coeff_y < 0) {
+                            z(i, u, j, v) = 1.0;
+                            z(j, v, i, u) = 1.0;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Step 3: Set x variables by checking reduced cost for each (i,u)
+        // If the reduced cost (coeff_x) is negative, set x(i,u) = 1
+        #pragma omp parallel for collapse(2) schedule(static)
+        for (int i = 0; i < n; ++i) {
+            for (int u = 0; u < n; ++u) {
+                // Compute reduced cost for x(i,u)
+                double coeff_x = -mu1(u) - mu2(i);
+                for (int v = 0; v < n; ++v) {
+                    auto j = v;
+                    coeff_x += theta1(i, u, v) + theta2(i, u, j);
+                }
+                // If negative, set x(i,u) = 1
+                if (coeff_x < 0) {
+                    x(i, u) = 1.0;
+                }
+            }
+        }
+        // Step 4: Compute constraint violations for the current solution
+        vio = 0.0;
+
+        // Assignment constraint 1: For each u, sum_i x[i,u] should be 1
+        // Store violation in vio_mu1(u) = 1 - sum_i x[i,u]
+        #pragma omp parallel for schedule(static)
+        for (int u = 0; u < n; ++u) {
+            double sum = 0.0;
+            for (int i = 0; i < n; ++i) {
+                sum += x(i, u);
+            }
+            vio_mu1(u) = 1.0 - sum;
+        }
+
+        // Assignment constraint 2: For each i, sum_u x[i,u] should be 1
+        // Store violation in vio_mu2(i) = 1 - sum_u x[i,u]
+        #pragma omp parallel for schedule(static)
+        for (int i = 0; i < n; ++i) {
+            double sum = 0.0;
+            for (int u = 0; u < n; ++u) {
+                sum += x(i, u);
+            }
+            vio_mu2(i) = 1.0 - sum;
+        }
+
+        // Linking constraint 2: For each (i,u,v), x[i,u] = sum_j y[i,u,j,v]
+        // Store violation in vio_theta1(i,u,v) = x[i,u] - sum_j y[i,u,j,v]
+        #pragma omp parallel for collapse(3) schedule(static)
+        for (int i = 0; i < n; ++i) {
+            for (int u = 0; u < n; ++u) {
+                for (int v = 0; v < n; ++v) {
+                    double sum = 0.0;
+                    for (int j = 0; j < n; ++j) {
+                        sum += z(i, u, j, v);
+                    }
+                    vio_theta1(i, u, v) = x(i, u) - sum;
+                }
+            }
+        }
+
+        // Linking constraint 1: For each (i,u,j), x[i,u] = sum_v y[i,u,j,v]
+        // Store violation in vio_theta2(i,u,j) = x[i,u] - sum_v y[i,u,j,v]
+        #pragma omp parallel for collapse(3) schedule(static)
+        for (int i = 0; i < n; ++i) {
+            for (int u = 0; u < n; ++u) {
+                for (int j = 0; j < n; ++j) {
+                    double sum = 0.0;
+                    for (int v = 0; v < n; ++v) {
+                        sum += z(i, u, j, v);
+                    }
+                    vio_theta2(i, u, j) = x(i, u) - sum;
+                }
+            }
+        }
+
+        // Step 5: Compute primal cost (QAP objective value for current y)
+        pcost = 0.0;
+        #pragma omp parallel for collapse(4) reduction(+:pcost) schedule(static)
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < n; ++j) {
+                for (int u = 0; u < n; ++u) {
+                    for (int v = 0; v < n; ++v) {
+                        pcost += qap_data.D[i][j] * qap_data.F[u][v] * z(i, u, j, v);
+                    }
+                }
+            }
+        }
+
+        // Step 6: Compute Lagrangian cost (objective + penalty for constraint violations)
+        lcost = pcost;
+        // Add penalties for assignment constraint violations
+        #pragma omp parallel for reduction(+:lcost) schedule(static)
+        for (int i = 0; i < n; ++i) {
+            lcost += mu2(i)*vio_mu2(i) + mu1(i)*vio_mu1(i);
+        }
+
+        // Add penalties for linking constraint violations
+        #pragma omp parallel for collapse(3) reduction(+:lcost) schedule(static)
+        for (int i = 0; i < n; ++i) {
+            for (int u = 0; u < n; ++u) {
+                for (int j = 0; j < n; ++j) {
+                    auto v = j;
+                    lcost += theta2(i,u,j)*vio_theta2(i,u,j) + theta1(i,u,v)*vio_theta1(i,u,v);
+                }
+            }
+        }
+
+        // for (auto u= 0; u < n; ++u) {
+        //     std::cout << "Vio u[" << u << "] = " << vio_mu1(u) << std::endl;
+        // }
+        // for (auto i= 0; i < n; ++i) {
+        //     std::cout << "Vio i[" << i << "] = " << vio_mu2(i) << std::endl;
+        // }
+
+        // auto total_vio = 0.0;
+        // #pragma omp parallel for reduction(+:total_vio) schedule(static)
+        // for (int k = 0; k < vio.size(); ++k) {
+        //     total_vio += vio[k];
+        // }
+        // std::cout << "Total violation: " << total_vio << std::endl;
+
+        // Print costs for debugging
+        // std::cout << "Primal cost: " << pcost << ", Lagrangian cost: " << lcost << std::endl;
+
+        return 0;
+    }
+
+    // Compute reduced costs (not used in RTL1 subproblem)
+    virtual int compute_rc(const VOL_dvector& /*pi*/, VOL_dvector& rc) override {
+        rc = 0;
+        return 0;
+    }
+    // Simple heuristic: extract assignment from x variables
+    virtual int heuristics(const VOL_problem& /*p*/, const VOL_dvector& psol,
+                          double& heur_val) override {
+        return 0;  // Found feasible solution
+    }
+};
+
+
+/**
+ * RTL1 Volume Hooks Implementation
+ */
+class RTL1VolumeHooks4 : public VOL_user_hooks {
+private:
+    const Problem& qap_data;
+    int n;
+    
+    // Working arrays for subproblem
+    std::vector<double> beta;       // beta[i,u,v] = min_j cost of y[i,u,j,v]=1
+    std::vector<int> beta_j_ind;    // j that achieves beta[i,u,v]
+    std::vector<double> alpha;      // alpha[i] = min_u cost of x[i,u]=1
+    std::vector<int> alpha_u_ind;   // u that achieves alpha[i]
+
+    std::vector<double> zsol; // working array for z variables 
+    // Fixed variables
+    FixedVariables fixed;
+    std::unordered_map<int, int> x_fixed_1;                    // i -> u
+    std::unordered_map<int, std::unordered_set<int>> x_fixed_0; // i -> {u}
+    std::unordered_map<int, int> y_fixed_1;                    // key(i,u,v) -> j
+    std::unordered_map<int, std::unordered_set<int>> y_fixed_0; // key(i,u,v) -> {j}
+    
+public:
+    RTL1VolumeHooks4(const Problem& data) 
+        : qap_data(data), n(data.n) {
+        beta.resize(n * n * n);
+        beta_j_ind.resize(n * n * n);
+        alpha.resize(n);
+        alpha_u_ind.resize(n);
+        zsol.resize(n * n * n * n);
+    }
+
+    /**
+     * Solve RTL1 Lagrangian Subproblem
+     * 
+     * DUAL VARIABLES (pi):
+     *   - mu[u]:           Lagrange multipliers for sum_i x[i,u] = 1
+     *   - lambda[i,u,j,v]: Multipliers for y[i,u,j,v] = y[j,v,i,u]
+     *   - theta[i,u,j]:    Multipliers for sum_v y[i,u,j,v] = x[i,u]
+     * 
+     * LAGRANGIAN:
+     *   L = sum_{i,j,u,v} d[i,j]*f[u,v]*y[i,u,j,v]
+     *       + sum_u mu[u] * (1 - sum_i x[i,u])
+     *       + sum_{i,u,j,v} lambda[i,u,j,v] * (y[j,v,i,u] - y[i,u,j,v])
+     *        + sum_{i,u,j} theta[i,u,j] * (x[i,u] - sum_v y[i,u,j,v])
+     * 
+     * ALGORITHM:
+     *   1. Compute beta[i,u,v] = min_j {Lagrangian cost of y[i,u,j,v]=1}
+     *   2. Compute alpha[i] = min_u {cost of x[i,u]=1 + sum_{j,v} beta[i,u,v]}
+     *   3. Set x[i,u]=1 for u minimizing alpha[i]
+     *   4. Set y[i,u,j,v]=1 for j minimizing beta[i,u,v]
+     */
+    int solve_subproblem_4(const VOL_dvector& pi,
+                                double& lcost, VOL_dvector& psol, VOL_dvector& vio,
+                                double& pcost) {
+        
+        // Initialize working arrays
+        std::fill(beta.begin(), beta.end(), 0.0);
+        std::fill(beta_j_ind.begin(), beta_j_ind.end(), 0);
+        std::fill(alpha.begin(), alpha.end(), 0.0);
+        std::fill(alpha_u_ind.begin(), alpha_u_ind.end(), 0);
+        std::fill(zsol.begin(), zsol.end(), 0.0);
+        
+        // STEP 1: Compute beta[i,u,v] = min_j {Lagrangian cost of y[i,u,j,v]=1}
+        #pragma omp parallel for collapse(3) schedule(static)
+        for (int i = 0; i < n; ++i) {
+            for (int u = 0; u < n; ++u) {
+                for (int v = 0; v < n; ++v) {
+                    double min_cost = DBL_MAX;
+                    int best_j = 0;
+
+                    int ykey = key_y(n, i, u, v);
+                    auto it_y1 = y_fixed_1.find(ykey);
+                    if (it_y1 != y_fixed_1.end()) {
+                        int j = it_y1->second;
+                        double cost = qap_data.D[i][j] * qap_data.F[u][v];
+                        if (i <= j) cost -= lambda(i, u, j, v);
+                        if (i >= j) cost += lambda(j, v, i, u);
+                        cost -= theta(i, u, j);
+                        min_cost = cost;
+                        best_j = j;
+                    } else {
+                        const auto it_y0 = y_fixed_0.find(ykey);
+                        for (int j = 0; j < n; ++j) {
+                            if (it_y0 != y_fixed_0.end() && it_y0->second.count(j)) {
+                                continue; // skip fixed-to-zero y
+                            }
+                            double cost = qap_data.D[i][j] * qap_data.F[u][v];
+                            if (i <= j) cost -= lambda(i, u, j, v);
+                            if (i >= j) cost += lambda(j, v, i, u);
+                            cost -= theta(i, u, j);
+                            if (cost < min_cost) {
+                                min_cost = cost;
+                                best_j = j;
+                            }
+                        }
+                    }
+
+                    int idx = i * n * n + u * n + v;
+                    if (min_cost == DBL_MAX) {
+                        std::cerr << "Warning: no feasible j for y[" << i << "," << u << ",*," << v << "] under fixed variables; choosing j=0 with large cost." << std::endl;
+                        beta[idx] = 1e30;
+                        beta_j_ind[idx] = 0;
+                    } else {
+                        beta[idx] = min_cost;
+                        beta_j_ind[idx] = best_j;
+                    }
+                }
+            }
+        }
+        
+        // STEP 2: Compute alpha[i] = min_u {cost of x[i,u]=1}
+        #pragma omp parallel for schedule(dynamic)
+        for (int i = 0; i < n; ++i) {
+            double min_cost = DBL_MAX;
+            int best_u = 0;
+
+            // If x[i,*] has a fixed 1, only evaluate that u
+            auto it_x1 = x_fixed_1.find(i);
+            if (it_x1 != x_fixed_1.end()) {
+                int u = it_x1->second;
+                double cost = -mu(u);
+                for (int j = 0; j < n; ++j) cost += theta(i, u, j);
+                for (int v = 0; v < n; ++v) {
+                    int idx = i * n * n + u * n + v;
+                    cost += beta[idx];
+                }
+                min_cost = cost;
+                best_u = u;
+            } else {
+                const auto it_x0 = x_fixed_0.find(i);
+                for (int u = 0; u < n; ++u) {
+                    if (it_x0 != x_fixed_0.end() && it_x0->second.count(u)) {
+                        continue; // fixed to zero
+                    }
+                    double cost = -mu(u);
+                    for (int j = 0; j < n; ++j) cost += theta(i, u, j);
+                    for (int v = 0; v < n; ++v) {
+                        int idx = i * n * n + u * n + v;
+                        cost += beta[idx];
+                    }
+                    if (cost < min_cost) {
+                        min_cost = cost;
+                        best_u = u;
+                    }
+                }
+            }
+
+            if (min_cost == DBL_MAX) {
+                std::cerr << "Warning: no feasible u for fixed variables at facility i=" << i << "; choosing u=0." << std::endl;
+                alpha[i] = 1e30;
+                alpha_u_ind[i] = 0;
+            } else {
+                alpha[i] = min_cost;
+                alpha_u_ind[i] = best_u;
+            }
+        }
+        
+        // STEP 3: Compute Lagrangian lower bound
+        lcost = 0.0;
+        #pragma omp parallel for reduction(+:lcost) schedule(static)
+        for (int i = 0; i < n; ++i) {
+            lcost += alpha[i];
+        }
+        
+        // Add constant term: sum_u mu[u]
+        for (int u = 0; u < n; ++u) {
+            lcost += mu(u);
+        }
+        
+        // STEP 4: Construct primal solution
+        psol = 0.0;
+        
+        // Set x[i,u]=1 for chosen u
+        #pragma omp parallel for schedule(static)
+        for (int i = 0; i < n; ++i) {
+            int u = alpha_u_ind[i];
+            x(i, u) = 1.0;
+        }
+        
+        // Set y[i,u,j,v]=1 for chosen j at chosen u
+        #pragma omp parallel for collapse(2) schedule(static)
+        for (int i = 0; i < n; ++i) {
+            for (int v = 0; v < n; ++v) {
+                int u = alpha_u_ind[i];
+                int idx = i * n * n + u * n + v;
+                int j = beta_j_ind[idx];
+                z(i, u, j, v) = 1.0;
+            }
+        }
+        
+        // Compute primal objective (original QAP objective on fractional solution)
+        pcost = 0.0;
+        #pragma omp parallel for collapse(2) reduction(+:pcost) schedule(static)
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < n; ++j) {
+                for (int u = 0; u < n; ++u) {
+                    for (int v = 0; v < n; ++v) {
+                        pcost += qap_data.D[i][j] * qap_data.F[u][v] * z(i, u, j, v);
+                    }
+                }
+            }
+        }
+        
+        // STEP 5: Compute constraint violations
+        vio = 0.0;
+        
+        // Violation of assignment constraints: 1 - sum_i x[i,u]
+        #pragma omp parallel for schedule(static)
+        for (int u = 0; u < n; ++u) {
+            double sum = 0.0;
+            for (int i = 0; i < n; ++i) {
+                sum += x(i, u);
+            }
+            vio_mu(u) = 1.0 - sum;
+        }
+        
+        // Violation of linking constraints: x[i,u] - sum_v y[i,u,j,v]
+        #pragma omp parallel for collapse(3) schedule(static)
+        for (int i = 0; i < n; ++i) {
+            for (int u = 0; u < n; ++u) {
+                for (int j = 0; j < n; ++j) {
+                    double sum = 0.0;
+                    for (int v = 0; v < n; ++v) {
+                        sum += z(i, u, j, v);
+                    }
+                    vio_theta(i, u, j) = x(i, u) - sum;
+                }
+            }
+        }
+        
+        // Violation of symmetry constraints: z[j,v,i,u] - z[i,u,j,v]
+        #pragma omp parallel for collapse(3) schedule(static)
+        for (int i = 0; i < n; ++i) {
+            for (int u = 0; u < n; ++u) {
+                    for (int v = 0; v < n; ++v) {
+                for (int j = i; j < n; ++j) {
+                        vio_lambda(i, u, j, v) = z(j, v, i, u) - z(i, u, j, v);
+                    }
+                }
+            }
+        }
+        
+        return 0;
+    }
+
+    void set_fixed_variables(const FixedVariables &fv) {
+        fixed = fv;
+        x_fixed_1 = fv.x_fixed_1;
+        x_fixed_0 = fv.x_fixed_0;
+        y_fixed_1 = fv.y_fixed_1;
+        y_fixed_0 = fv.y_fixed_0;
+    }
+    
+    // Compute reduced costs (not used in RTL1 subproblem)
+    virtual int compute_rc(const VOL_dvector& /*pi*/, VOL_dvector& rc) override {
+        rc = 0;
+        return 0;
+    }
+    
+    virtual int solve_subproblem(const VOL_dvector& pi, const VOL_dvector& /*rc*/,
+                                double& lcost, VOL_dvector& psol, VOL_dvector& vio,
+                                double& pcost) override {
+                                    return solve_subproblem_4(pi, lcost, psol, vio, pcost);
+                                }
+    
+    // Simple heuristic: extract assignment from x variables
+    virtual int heuristics(const VOL_problem& /*p*/, const VOL_dvector& psol,
+                          double& heur_val) override {
+        return 0;  // Found feasible solution
+    }
+};
+    
+
+void set_up_vol_problem_1(VOL_problem &vol_problem, const Problem &qap_data, const FixedVariables &fixed) {
+    int n = qap_data.n;
+
+    // Set problem dimensions
+    // Primal variables: x[i,u] (n*n) + y[i,u,j,v] (n^4)
+    vol_problem.psize = n * n + n * n * n * n;
+    
+    // Dual variables: mu[u] (n) + lambda[i,u,j,v] (n^4) + theta[i,u,j] (n^3)
+    vol_problem.dsize = n + n * n * n * n + n * n * n;
+    
+    // Set dual bounds (all free variables)
+    vol_problem.dual_lb.allocate(vol_problem.dsize);
+    vol_problem.dual_ub.allocate(vol_problem.dsize);
+    vol_problem.dual_lb = -DBL_MAX;
+    vol_problem.dual_ub = DBL_MAX;
+    
+    // Initialize dual solution to zero
+    vol_problem.dsol.allocate(vol_problem.dsize);
+    vol_problem.dsol = 0.0;
+}
+
+void set_up_vol_problem_2(VOL_problem &vol_problem, const Problem &qap_data, const FixedVariables &fixed) {
+    int n = qap_data.n;
+
+    // Set problem dimensions
+    // Primal variables: x[i,u] (n*n) + y[i,u,j,v] (n^4)
+    vol_problem.psize = n * n + n * n * n * n;
+    
+    // Dual variables: mu1[u] (n) + mu2[i] (n) + theta1[i,u,v] (n^3) + theta2[i,u,j] (n^3)
+    vol_problem.dsize = n*2 + n * n * n * 2;
+    
+    // Set dual bounds (all free variables)
+    vol_problem.dual_lb.allocate(vol_problem.dsize);
+    vol_problem.dual_ub.allocate(vol_problem.dsize);
+    vol_problem.dual_lb = -DBL_MAX;
+    vol_problem.dual_ub = DBL_MAX;
+    
+    // Initialize dual solution to zero
+    vol_problem.dsol.allocate(vol_problem.dsize);
+    vol_problem.dsol = 0.0;
+}
+
+void set_up_vol_problem_3(VOL_problem &vol_problem, const Problem &qap_data, const FixedVariables &fixed) {
+    int n = qap_data.n;
+
+    // Set problem dimensions
+    // Placeholder for third formulation's dimensions
+    vol_problem.psize = n*n;
+    vol_problem.dsize = 2*n + 2*n*n*n;
+    
+    // Set dual bounds (all free variables)
+    vol_problem.dual_lb.allocate(vol_problem.dsize);
+    vol_problem.dual_ub.allocate(vol_problem.dsize);
+    vol_problem.dual_lb = -DBL_MAX;
+    vol_problem.dual_ub = DBL_MAX;
+    
+    // Initialize dual solution to zero
+    vol_problem.dsol.allocate(vol_problem.dsize);
+    vol_problem.dsol = 0.0;
+}
+
+void set_up_vol_problem_4(VOL_problem &vol_problem, const Problem &qap_data, const FixedVariables &fixed) {
+    int n = qap_data.n;
+
+    // Set problem dimensions
+    // Placeholder for third formulation's dimensions
+    vol_problem.psize = n*n;
+    // Dual variables: mu[u] (n) + lambda[i,u,j,v] (n^4) + theta[i,u,j] (n^3)
+    vol_problem.dsize = n + n * n * n * n + n * n * n;
+    
+    // Set dual bounds (all free variables)
+    vol_problem.dual_lb.allocate(vol_problem.dsize);
+    vol_problem.dual_ub.allocate(vol_problem.dsize);
+    vol_problem.dual_lb = -DBL_MAX;
+    vol_problem.dual_ub = DBL_MAX;
+    
+    // Initialize dual solution to zero
+    vol_problem.dsol.allocate(vol_problem.dsize);
+    vol_problem.dsol = 0.0;
+}
 
 /**
  * Main solver function
@@ -565,6 +1333,7 @@ int main(int argc, char* argv[]) {
     std::string save_dual_path = "";
     std::string load_dual_path = "";
     std::string fixed_path = "";
+    std::string formulation = "";
     
     for (int i = 2; i < argc; ++i) {
         std::string arg = argv[i];
@@ -582,9 +1351,11 @@ int main(int argc, char* argv[]) {
             load_dual_path = argv[++i];
         } else if (arg == "--fixed" && i + 1 < argc) {
             fixed_path = argv[++i];
+        } else if (arg == "--formulation" && i + 1 < argc) {
+            formulation = argv[++i];
         }
     }
-    
+    std::cout << "Solving using formulation: " << formulation << std::endl;
     // Set number of OpenMP threads
     omp_set_num_threads(num_threads);
     
@@ -604,23 +1375,18 @@ int main(int argc, char* argv[]) {
     
     // Setup Volume problem
     VOL_problem vol_problem;
-    
-    // Set problem dimensions
-    // Primal variables: x[i,u] (n*n) + y[i,u,j,v] (n^4)
-    vol_problem.psize = n * n + n * n * n * n;
-    
-    // Dual variables: mu[u] (n) + lambda[i,u,j,v] (n^4) + theta[i,u,j] (n^3)
-    vol_problem.dsize = n + n * n * n * n + n * n * n;
-    
-    // Set dual bounds (all free variables)
-    vol_problem.dual_lb.allocate(vol_problem.dsize);
-    vol_problem.dual_ub.allocate(vol_problem.dsize);
-    vol_problem.dual_lb = -DBL_MAX;
-    vol_problem.dual_ub = DBL_MAX;
-    
-    // Initialize dual solution to zero
-    vol_problem.dsol.allocate(vol_problem.dsize);
-    vol_problem.dsol = 0.0;
+    if (formulation == "formulation1") {
+        set_up_vol_problem_1(vol_problem, qap_data, FixedVariables());
+    } else if (formulation == "formulation2") {
+        set_up_vol_problem_2(vol_problem, qap_data, FixedVariables());
+    } else if (formulation == "formulation3") {
+        set_up_vol_problem_3(vol_problem, qap_data, FixedVariables());
+    } else if (formulation == "formulation4") {
+        set_up_vol_problem_4(vol_problem, qap_data, FixedVariables());
+    } else {
+        std::cerr << "Error: Unknown formulation specified. Use --formulation <formulation1|formulation2|formulation3|formulation4>" << std::endl;
+        return 1;
+    }
     
     // Load dual vector if specified
     if (!load_dual_path.empty()) {
@@ -640,8 +1406,8 @@ int main(int argc, char* argv[]) {
     
     // Set Volume algorithm parameters (from qap.par defaults)
     vol_problem.parm.lambdainit = 0.1;
-    vol_problem.parm.alphainit = 0.1;
-    vol_problem.parm.alphamin = 0.001;
+    vol_problem.parm.alphainit = 0.01;
+    vol_problem.parm.alphamin = 0.0001;
     vol_problem.parm.alphafactor = 0.66;
     vol_problem.parm.alphaint = 50;
     
@@ -665,14 +1431,24 @@ int main(int argc, char* argv[]) {
     vol_problem.parm.heurinvl = 100;
     
     // Create hooks
-    RTL1VolumeHooks hooks(qap_data);
-
+    RTL1VolumeHooks1 hooks1(qap_data);
+    RTL1VolumeHooks2 hooks2(qap_data);
+    RTL1VolumeHooks3 hooks3(qap_data);
+    RTL1VolumeHooks4 hooks4(qap_data);
     // Load fixed variables if provided
     FixedVariables fv;
     bool has_fixed = false;
     if (!fixed_path.empty()) {
         if (parse_fixed_file(fixed_path, n, fv)) {
-            hooks.set_fixed_variables(fv);
+            if (formulation == "formulation1") {
+                hooks1.set_fixed_variables(fv);
+            } else if (formulation == "formulation2") {
+                hooks2.set_fixed_variables(fv);
+            } else if (formulation == "formulation3") {
+                hooks3.set_fixed_variables(fv);
+            } else if (formulation == "formulation4") {
+                hooks4.set_fixed_variables(fv);
+            }
             has_fixed = true;
         } else {
             std::cerr << "Error parsing fixed-variable file; continuing without fixed variables." << std::endl;
@@ -689,7 +1465,19 @@ int main(int argc, char* argv[]) {
     }
     auto start_time = std::chrono::high_resolution_clock::now();
     
-    int retval = vol_problem.solve(hooks, use_dual_warmstart);
+    int retval;
+    if (formulation == "formulation1") {
+        retval = vol_problem.solve(hooks1, use_dual_warmstart);
+    } else if (formulation == "formulation2") {
+        retval = vol_problem.solve(hooks2, use_dual_warmstart);
+    } else if (formulation == "formulation3") {
+        retval = vol_problem.solve(hooks3, use_dual_warmstart);
+    } else if (formulation == "formulation4") {
+        retval = vol_problem.solve(hooks4, use_dual_warmstart);
+    } else {
+        std::cerr << "Error: Unknown formulation specified." << std::endl;
+        return 1;
+    }
     
     auto end_time = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
@@ -733,7 +1521,7 @@ int main(int argc, char* argv[]) {
     }
     
     // Extract and save best solution if requested
-    if (!output_path.empty() && vol_problem.psol.size() > 0) {
+    if (!output_path.empty() && vol_problem.psol.size() > 0 && formulation != "formulation4") {
         // Extract assignment from x variables
         std::vector<int> assignment(n);
         for (int i = 0; i < n; ++i) {
@@ -761,7 +1549,7 @@ int main(int argc, char* argv[]) {
     }
     
     // Always report a summary of primal violations (assignment, link, symmetry)
-    if (vol_problem.psol.size() > 0) {
+    if (vol_problem.psol.size() > 0 and formulation != "formulation3" && formulation != "formulation4") {
         auto vsummary = compute_primal_violation_summary(vol_problem.psol, n);
         std::cout << "\nPrimal violation summary (n=" << vsummary.n << ")" << std::endl;
         std::cout << "  Max abs: " << std::setprecision(6) << vsummary.max_abs
@@ -785,6 +1573,10 @@ int main(int argc, char* argv[]) {
     }
     
     std::cout << "==================================================" << std::endl;
+    auto instance_name = instance_path.substr(instance_path.find_last_of("/\\") + 1);
+    
+    auto n_iterations = vol_problem.iter();
+    std::cout << instance_name << " & " << formulation << " & " << vol_problem.value << " & " << n_iterations << " & " << std::fixed << std::setprecision(2) << elapsed_seconds << "s\\\\" << std::endl;
     
     return retval;
 }

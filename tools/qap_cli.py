@@ -214,6 +214,11 @@ def run_rtl1_volume(args: "Args", spec: ModuleSpec) -> int:
     load_dual = config.get("load_dual", "")
     if load_dual:
         cmd += ["--load-dual", str(_resolve_path(load_dual))]
+        
+        
+    formulation = config.get("formulation", "")
+    if formulation:
+        cmd += ["--formulation", str(formulation)]
 
     # Fixed variables (file) from CLI or config key "fixed"
     fixed_path = args.fixed or config.get("fixed")
