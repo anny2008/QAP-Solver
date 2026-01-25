@@ -1405,13 +1405,13 @@ int main(int argc, char* argv[]) {
     }
     
     // Set Volume algorithm parameters (from qap.par defaults)
-    vol_problem.parm.lambdainit = 0.1;
+    vol_problem.parm.lambdainit = 0.01;
     vol_problem.parm.alphainit = 0.01;
     vol_problem.parm.alphamin = 0.0001;
     vol_problem.parm.alphafactor = 0.66;
     vol_problem.parm.alphaint = 50;
     
-    vol_problem.parm.maxsgriters = 100000000;  // Approximate iterations from time
+    vol_problem.parm.maxsgriters = 100000000; // effectively no limit
     vol_problem.parm.primal_abs_precision = 0.001;
     vol_problem.parm.gap_abs_precision = 0.0;
     vol_problem.parm.gap_rel_precision = 0.001;
