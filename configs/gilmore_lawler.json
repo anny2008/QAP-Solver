@@ -1,5 +1,5 @@
 {
     "solver": "gilmore_lawler",
-    "instance": "/home/local.isima.fr/antran/UFF/QAP_New_formulation/data/QAPLIB/nug12.dat",
+    "instance": "/Users/shawnee/Work/QAPSolver/QAP-Solver/data/QAPLIB/nug12.dat",
     "output": "results/gilmore_lawler_result.json"
 }
