@@ -1,8 +1,13 @@
 #include "gilmore_lawler.h"
 #include <vector>
 #include <algorithm>
+#include <cmath>
+#include <map>
+#include <set>
+#include <string>
+#include <queue>
+#include <stack>
 #include <limits>
-#include <bits/stdc++.h>
 
 /*
   Hungarian algorithm (O(n^3)) for the min-cost assignment on a square matrix.
@@ -17,12 +22,12 @@ std::pair<double, std::vector<int>> hungarian_min(const std::vector<std::vector<
     for (int i = 1; i <= n; ++i) {
         p[0] = i;
         double j0 = 0;
-        std::vector<double> minv(n + 1, LLONG_MAX);
+        std::vector<double> minv(n + 1, std::numeric_limits<double>::max());
         std::vector<char> used(n + 1, false);
         do {
             used[j0] = true;
             int i0 = p[j0], j1 = 0;
-            double delta = LLONG_MAX;
+            double delta = std::numeric_limits<double>::max();
             for (int j = 1; j <= n; ++j) if (!used[j]) {
                 double cur = a[i0 - 1][j - 1] - u[i0] - v[j];
                 if (cur < minv[j]) {

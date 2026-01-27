@@ -1,0 +1,10 @@
+{
+  "solver": "m4",
+  "formulation": "m4",
+  "instance": "data/QAPLIB/nug12.dat",
+  "time_limit": 120,
+  "threads": 8,
+  "log_output": true,
+  "is_relax": false,
+  "warmstart": "data/QAPLIB/nug12.sln"
+}

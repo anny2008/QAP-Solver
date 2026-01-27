@@ -257,6 +257,34 @@ def run_rtl1_cplex(args: "Args", spec: ModuleSpec) -> int:
     _print_solution_summary(solution)
     return 0
 
+def run_m4_cplex(args: "Args", spec: ModuleSpec) -> int:
+    try:
+        from qap.modules.m4.solver import M4CPLEXSolver
+    except ImportError as exc:
+        print("M4 CPLEX solver missing dependencies (docplex/cplex)", file=sys.stderr)
+        raise exc
+
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("M4 CPLEX requires --instance")
+    solver = M4CPLEXSolver(config)
+
+    # Warm-start: prefer CLI arg, else use config key 'warmstart' if provided
+    warmstart_path = None
+    if args.warmstart:
+        warmstart_path = str(_resolve_path(args.warmstart))
+    elif "warmstart" in config and config["warmstart"]:
+        warmstart_path = str(_resolve_path(config["warmstart"]))
+
+    solution = solver.solve_instance(
+        instance_path=str(_resolve_path(instance)),
+        output_path=str(_resolve_path(args.output)) if args.output else None,
+        warmstart_path=warmstart_path,
+    )
+
+    _print_solution_summary(solution)
+    return 0
 
 def run_rtl1_scip_py(args: "Args", spec: ModuleSpec) -> int:
     try:
@@ -547,6 +575,13 @@ MODULES: Dict[str, ModuleSpec] = {
         workdir=ROOT,
         default_config=ROOT / "configs/rtl1_cplex.json",
         runner=run_rtl1_cplex,
+    ),
+    "m4_cplex": ModuleSpec(
+        name="m4_cplex",
+        kind="python",
+        workdir=ROOT,
+        default_config=ROOT / "configs/m4.json",
+        runner=run_m4_cplex,
     ),
     "rtl1_scip_py": ModuleSpec(
         name="rtl1_scip_py",
