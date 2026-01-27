@@ -1,21 +1,21 @@
 #!/usr/bin/env python
 """
-Demo script for RTL1 CPLEX solver.
+Demo script for RLT1 CPLEX solver.
 
-Runs the RTL1 solver on QAPLIB instances with optional warm-start solutions.
+Runs the RLT1 solver on QAPLIB instances with optional warm-start solutions.
 
 Usage:
     # Activate conda environment
     conda activate LP
 
     # Run on a single instance
-    python demo_rtl1.py -i /path/to/instance.dat
+    python demo_rlt1.py -i /path/to/instance.dat
 
     # Run on a single instance with warm-start
-    python demo_rtl1.py -i /path/to/instance.dat -w /path/to/warmstart.json
+    python demo_rlt1.py -i /path/to/instance.dat -w /path/to/warmstart.json
 
     # Run on all instances in a directory
-    python demo_rtl1.py --data-dir /path/to/QAPLIB -o results/
+    python demo_rlt1.py --data-dir /path/to/QAPLIB -o results/
 """
 
 import sys
@@ -26,7 +26,7 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent))
 
-from python.qap.modules.rtl1_cplex.solver import RTL1CPLEXSolver
+from python.qap.modules.rlt1_cplex.solver import RLT1CPLEXSolver
 
 
 def run_single_instance(
@@ -39,8 +39,8 @@ def run_single_instance(
     """Run solver on a single instance."""
 
     config = {
-        "solver": "rtl1_cplex",
-        "formulation": "rtl1",
+        "solver": "rlt1_cplex",
+        "formulation": "rlt1",
         "is_relax": is_relax,
         "time_limit": time_limit,
         "threads": 8,
@@ -48,16 +48,16 @@ def run_single_instance(
         "preprocessing_symmetry": 5,
     }
 
-    solver = RTL1CPLEXSolver(config)
+    solver = RLT1CPLEXSolver(config)
 
     instance_name = Path(instance_path).stem
     output_path = None
     if output_dir:
         Path(output_dir).mkdir(parents=True, exist_ok=True)
-        output_path = str(Path(output_dir) / f"{instance_name}_rtl1.json")
+        output_path = str(Path(output_dir) / f"{instance_name}_rlt1.json")
 
     print(f"\n{'='*70}")
-    print(f"RTL1 CPLEX Solver - {instance_name}")
+    print(f"RLT1 CPLEX Solver - {instance_name}")
     print(f"{'='*70}")
     print(f"Instance: {instance_path}")
     print(f"Relax:    {is_relax}")
@@ -102,8 +102,8 @@ def run_directory(
 
     for instance_file in instances:
         config = {
-            "solver": "rtl1_cplex",
-            "formulation": "rtl1",
+            "solver": "rlt1_cplex",
+            "formulation": "rlt1",
             "is_relax": is_relax,
             "time_limit": time_limit,
             "threads": 8,
@@ -111,13 +111,13 @@ def run_directory(
             "preprocessing_symmetry": 5,
         }
 
-        solver = RTL1CPLEXSolver(config)
+        solver = RLT1CPLEXSolver(config)
 
         instance_name = instance_file.stem
         output_path = None
         if output_dir:
             Path(output_dir).mkdir(parents=True, exist_ok=True)
-            output_path = str(Path(output_dir) / f"{instance_name}_rtl1.json")
+            output_path = str(Path(output_dir) / f"{instance_name}_rlt1.json")
 
         print(f"\nSolving: {instance_name}...", end=" ", flush=True)
 
@@ -157,7 +157,7 @@ def run_directory(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="RTL1 CPLEX Solver Demo")
+    parser = argparse.ArgumentParser(description="RLT1 CPLEX Solver Demo")
     parser.add_argument("-i", "--instance", help="Path to single instance file")
     parser.add_argument("-w", "--warmstart", help="Path to warm-start file (JSON)")
     parser.add_argument("-d", "--data-dir", help="Directory with QAPLIB instances")
@@ -201,5 +201,5 @@ if __name__ == "__main__":
         else:
             print(f"Default instance not found: {instance_file}")
             print("\nUsage examples:")
-            print("  python demo_rtl1.py -i /path/to/instance.dat")
-            print("  python demo_rtl1.py -d /path/to/QAPLIB -o results/")
+            print("  python demo_rlt1.py -i /path/to/instance.dat")
+            print("  python demo_rlt1.py -d /path/to/QAPLIB -o results/")

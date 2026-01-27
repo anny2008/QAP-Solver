@@ -1,0 +1,10 @@
+{
+  "solver": "rlt1_cplex",
+  "formulation": "rlt1",
+  "instance": "/home/local.isima.fr/antran/UFF/QAP_New_formulation/data/QAPLIB/tai15b.dat",
+  "time_limit": 120,
+  "threads": 8,
+  "log_output": true,
+  "is_relax": true,
+  "warmstart": ""
+}

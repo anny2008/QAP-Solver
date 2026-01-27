@@ -1,6 +1,6 @@
 {
-  "title": "RTL1 + CPLEX Configuration",
-  "description": "Schema for RTL1 formulation solved with CPLEX",
+  "title": "RLT1 + CPLEX Configuration",
+  "description": "Schema for RLT1 formulation solved with CPLEX",
   "type": "object",
   "properties": {
     "solver": {
@@ -10,7 +10,7 @@
     },
     "formulation": {
       "type": "string",
-      "enum": ["rtl1"],
+      "enum": ["rlt1"],
       "description": "Formulation type"
     },
     "time_limit": {

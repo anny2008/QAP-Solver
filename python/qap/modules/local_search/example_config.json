@@ -1,7 +1,0 @@
-{
-  "solver": "local_search",
-  "method": "tabu_search",
-  "time_limit": 120,
-  "initial_solution": "greedy",
-  "seed": 42
-}

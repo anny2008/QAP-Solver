@@ -3,12 +3,12 @@
 """Unified build/run interface for QAP-Solver modules.
 
 Supports:
-- C++ binaries: sfd_scip, rtl1_scip, local_search (2-opt, ils, tabu)
-- Python solvers: rtl1_cplex, rtl1_scip_py
+- C++ binaries: sfd_scip, rlt1_scip, local_search (2-opt, ils, tabu)
+- Python solvers: rlt1_cplex, rlt1_scip_py
 
 Examples:
     # Build C++ modules
-    python tools/qap_cli.py build --module sfd_scip rtl1_scip local_search
+    python tools/qap_cli.py build --module sfd_scip rlt1_scip local_search
 
     # Run Local Search (tabu search) with config
     python tools/qap_cli.py run --module local_search --config configs/local_search.json
@@ -16,11 +16,11 @@ Examples:
     # Run SFD (SCIP) with config
     python tools/qap_cli.py run --module sfd_scip --config configs/sfd_scip.json
 
-    # Run RTL1 (SCIP C++) with instance and warmstart
-    python tools/qap_cli.py run --module rtl1_scip --instance data/chr12a.dat --warmstart data/chr12a.sln --threads 8 --time-limit 300
+    # Run RLT1 (SCIP C++) with instance and warmstart
+    python tools/qap_cli.py run --module rlt1_scip --instance data/chr12a.dat --warmstart data/chr12a.sln --threads 8 --time-limit 300
 
-    # Run RTL1 (CPLEX Python) using config and write output JSON
-    python tools/qap_cli.py run --module rtl1_cplex --instance data/chr12a.dat --config configs/rtl1_cplex.json --output results.json
+    # Run RLT1 (CPLEX Python) using config and write output JSON
+    python tools/qap_cli.py run --module rlt1_cplex --instance data/chr12a.dat --config configs/rlt1_cplex.json --output results.json
 """
 
 from __future__ import annotations
@@ -81,9 +81,9 @@ def run_sfd_scip(args: "Args", spec: ModuleSpec) -> int:
     return _run_subprocess(cmd, spec.workdir)
 
 
-def run_rtl1_scip_cpp(args: "Args", spec: ModuleSpec) -> int:
+def run_rlt1_scip_cpp(args: "Args", spec: ModuleSpec) -> int:
     if not spec.binary:
-        raise ValueError("Missing binary path for rtl1_scip")
+        raise ValueError("Missing binary path for rlt1_scip")
     
     # Load config if provided
     config = _load_config(args.config, spec.default_config)
@@ -91,7 +91,7 @@ def run_rtl1_scip_cpp(args: "Args", spec: ModuleSpec) -> int:
     # Determine instance path (CLI arg > config > error)
     instance = args.instance or config.get("instance")
     if not instance:
-        raise ValueError("RTL1 SCIP (C++) requires --instance or instance in config")
+        raise ValueError("RLT1 SCIP (C++) requires --instance or instance in config")
 
     cmd = [str(spec.binary), str(_resolve_path(instance))]
     
@@ -103,6 +103,10 @@ def run_rtl1_scip_cpp(args: "Args", spec: ModuleSpec) -> int:
     if args.output:
         cmd += ["--output", str(_resolve_path(args.output))]
     
+    formulation = config.get("formulation")
+    if formulation:
+        cmd += ["--formulation", str(formulation)]
+
     # Time limit: CLI > config
     time_limit = args.time_limit or config.get("time_limit")
     if time_limit is not None:
@@ -116,7 +120,7 @@ def run_rtl1_scip_cpp(args: "Args", spec: ModuleSpec) -> int:
     # Log: CLI > config
     if args.log or config.get("log_output", False):
         cmd.append("--log")
-
+        
     # Relaxation mode (config only for now): "default" or "volume"
     relax_mode = config.get("relaxation")
     if relax_mode in {"default", "volume"}:
@@ -136,7 +140,7 @@ def run_sfd_volume(args: "Args", spec: ModuleSpec) -> int:
     config = _load_config(args.config, spec.default_config)
     instance = args.instance or config.get("instance")
     if not instance:
-        raise ValueError("RTL1 Volume requires --instance or instance in config")
+        raise ValueError("RLT1 Volume requires --instance or instance in config")
     else:
         print(f"[info] using instance: {instance}")
 
@@ -175,9 +179,9 @@ def run_sfd_volume(args: "Args", spec: ModuleSpec) -> int:
 
     return _run_subprocess(cmd, spec.workdir)
 
-def run_rtl1_volume(args: "Args", spec: ModuleSpec) -> int:
+def run_rlt1_volume(args: "Args", spec: ModuleSpec) -> int:
     if not spec.binary:
-        raise ValueError("Missing binary path for rtl1_volume")
+        raise ValueError("Missing binary path for rlt1_volume")
     
     # Load config if provided
     config = _load_config(args.config, spec.default_config)
@@ -185,7 +189,7 @@ def run_rtl1_volume(args: "Args", spec: ModuleSpec) -> int:
     # Determine instance path (CLI arg > config > error)
     instance = args.instance or config.get("instance")
     if not instance:
-        raise ValueError("RTL1 Volume requires --instance or instance in config")
+        raise ValueError("RLT1 Volume requires --instance or instance in config")
 
     cmd = [str(spec.binary), str(_resolve_path(instance))]
     
@@ -228,18 +232,18 @@ def run_rtl1_volume(args: "Args", spec: ModuleSpec) -> int:
     return _run_subprocess(cmd, spec.workdir)
 
 
-def run_rtl1_cplex(args: "Args", spec: ModuleSpec) -> int:
+def run_rlt1_cplex(args: "Args", spec: ModuleSpec) -> int:
     try:
-        from qap.modules.rtl1_cplex.solver import RTL1CPLEXSolver
+        from qap.modules.rlt1_cplex.solver import RLT1CPLEXSolver
     except ImportError as exc:
-        print("RTL1 CPLEX solver missing dependencies (docplex/cplex)", file=sys.stderr)
+        print("RLT1 CPLEX solver missing dependencies (docplex/cplex)", file=sys.stderr)
         raise exc
 
     config = _load_config(args.config, spec.default_config)
     instance = args.instance or config.get("instance")
     if not instance:
-        raise ValueError("RTL1 CPLEX requires --instance")
-    solver = RTL1CPLEXSolver(config)
+        raise ValueError("RLT1 CPLEX requires --instance")
+    solver = RLT1CPLEXSolver(config)
 
     # Warm-start: prefer CLI arg, else use config key 'warmstart' if provided
     warmstart_path = None
@@ -258,19 +262,19 @@ def run_rtl1_cplex(args: "Args", spec: ModuleSpec) -> int:
     return 0
 
 
-def run_rtl1_scip_py(args: "Args", spec: ModuleSpec) -> int:
+def run_rlt1_scip_py(args: "Args", spec: ModuleSpec) -> int:
     try:
-        from qap.modules.rtl1_scip.solver import RTL1SCIPSolver
+        from qap.modules.rlt1_scip.solver import RLT1SCIPSolver
     except ImportError as exc:
-        print("RTL1 SCIP Python solver missing dependencies (PySCIPOpt)", file=sys.stderr)
+        print("RLT1 SCIP Python solver missing dependencies (PySCIPOpt)", file=sys.stderr)
         raise exc
 
     instance = args.instance or config.get("instance")
     if not instance:
-        raise ValueError("RTL1 SCIP Python requires --instance")
+        raise ValueError("RLT1 SCIP Python requires --instance")
 
     config = _load_config(args.config, spec.default_config)
-    solver = RTL1SCIPSolver(config)
+    solver = RLT1SCIPSolver(config)
     solution = solver.solve_instance(
         instance_path=str(_resolve_path(instance)),
         output_path=str(_resolve_path(args.output)) if args.output else None,
@@ -387,6 +391,38 @@ def run_gilmore_lawler(args: "Args", spec: ModuleSpec) -> int:
     print(f"[run] {' '.join(cmd)} (cwd={spec.workdir})")
     result = subprocess.run(cmd, cwd=spec.workdir)
     return result.returncode
+
+
+# M4 Formulation runner implementation
+def run_m4_formulation(args: "Args", spec: ModuleSpec) -> int:
+    try:
+        from qap.modules.m4_formulation.solver import M4FormulationSolver
+    except ImportError as exc:
+        print("M4FormulationSolver missing dependencies (docplex/cplex or others)", file=sys.stderr)
+        raise exc
+
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("M4Formulation requires --instance")
+    solver = M4FormulationSolver(config)
+
+    # Warm-start: prefer CLI arg, else use config key 'warmstart' if provided
+    warmstart_path = None
+    if args.warmstart:
+        warmstart_path = str(_resolve_path(args.warmstart))
+    elif "warmstart" in config and config["warmstart"]:
+        warmstart_path = str(_resolve_path(config["warmstart"]))
+
+    solution = solver.solve_instance(
+        instance_path=str(_resolve_path(instance)),
+        output_path=str(_resolve_path(args.output)) if args.output else None,
+        warmstart_path=warmstart_path,
+    )
+
+    if solution is not None:
+        _print_solution_summary(solution)
+    return 0
 # Helpers --------------------------------------------------------------------
 
 def _resolve_path(path_str: str) -> Path:
@@ -523,37 +559,37 @@ MODULES: Dict[str, ModuleSpec] = {
         default_config=ROOT / "configs/sfd_volume.json",
         runner=run_sfd_volume,
     ),
-    "rtl1_scip": ModuleSpec(
-        name="rtl1_scip",
+    "rlt1_scip": ModuleSpec(
+        name="rlt1_scip",
         kind="cpp",
-        workdir=ROOT / "cpp/modules/rtl1_scip",
-        binary=ROOT / "cpp/modules/rtl1_scip/rtl1_solver",
+        workdir=ROOT / "cpp/modules/rlt1_scip",
+        binary=ROOT / "cpp/modules/rlt1_scip/rlt1_solver",
         build_cmd=["make"],
-        default_config=ROOT / "configs/rtl1_scip.json",
-        runner=run_rtl1_scip_cpp,
+        default_config=ROOT / "configs/rlt1_scip.json",
+        runner=run_rlt1_scip_cpp,
     ),
-    "rtl1_volume": ModuleSpec(
-        name="rtl1_volume",
+    "rlt1_volume": ModuleSpec(
+        name="rlt1_volume",
         kind="cpp",
-        workdir=ROOT / "cpp/modules/rtl1_volume",
-        binary=ROOT / "cpp/modules/rtl1_volume/rtl1_volume_solver",
+        workdir=ROOT / "cpp/modules/rlt1_volume",
+        binary=ROOT / "cpp/modules/rlt1_volume/rlt1_volume_solver",
         build_cmd=["make"],
-        default_config=ROOT / "configs/rtl1_volume.json",
-        runner=run_rtl1_volume,
+        default_config=ROOT / "configs/rlt1_volume.json",
+        runner=run_rlt1_volume,
     ),
-    "rtl1_cplex": ModuleSpec(
-        name="rtl1_cplex",
+    "rlt1_cplex": ModuleSpec(
+        name="rlt1_cplex",
         kind="python",
         workdir=ROOT,
-        default_config=ROOT / "configs/rtl1_cplex.json",
-        runner=run_rtl1_cplex,
+        default_config=ROOT / "configs/rlt1_cplex.json",
+        runner=run_rlt1_cplex,
     ),
-    "rtl1_scip_py": ModuleSpec(
-        name="rtl1_scip_py",
+    "rlt1_scip_py": ModuleSpec(
+        name="rlt1_scip_py",
         kind="python",
         workdir=ROOT,
-        default_config=ROOT / "configs/rtl1_scip.json",
-        runner=run_rtl1_scip_py,
+        default_config=ROOT / "configs/rlt1_scip.json",
+        runner=run_rlt1_scip_py,
     ),
     "sfd_cplex": ModuleSpec(
         name="sfd_cplex",
@@ -570,6 +606,13 @@ MODULES: Dict[str, ModuleSpec] = {
         build_cmd=["make"],
         default_config=ROOT / "configs/local_search.json",
         runner=run_local_search,
+    ),
+    "m4_formulation": ModuleSpec(
+        name="m4_formulation",
+        kind="python",
+        workdir=ROOT,
+        default_config=ROOT / "configs/m4_formulation.json",
+        runner=lambda args, spec: run_m4_formulation(args, spec),
     ),
 }
 

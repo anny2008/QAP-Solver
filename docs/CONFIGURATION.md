@@ -14,7 +14,7 @@ Each module has:
 User configurations should be placed in the `configs/` directory:
 ```
 configs/
-├── rtl1_cplex.json
+├── rlt1_cplex.json
 ├── form3_cplex.json
 ├── form3_scip.json
 └── local_search.json
@@ -22,14 +22,14 @@ configs/
 
 ## Module Schemas
 
-### RTL1 SCIP (C++)
+### RLT1 SCIP (C++)
 
-The C++ RTL1 with SCIP supports a `relaxation` option to choose between the default SCIP behavior and a custom Volume-based relaxation handler:
+The C++ RLT1 with SCIP supports a `relaxation` option to choose between the default SCIP behavior and a custom Volume-based relaxation handler:
 
 ```json
 {
-  "solver": "rtl1_scip",
-  "formulation": "rtl1",
+  "solver": "rlt1_scip",
+  "formulation": "rlt1",
   "instance": "data/chr12a.dat",
   "time_limit": 120,
   "threads": 8,
@@ -42,22 +42,22 @@ The C++ RTL1 with SCIP supports a `relaxation` option to choose between the defa
 - relaxation: "volume" uses the custom Volume relaxation; "default" disables it and relies on SCIP's default relaxation.
 - relaxation_info: if true, prints relaxation value, number of fixed x/y variables, and violation summary at each call.
 
-### RTL1 CPLEX
+### RLT1 CPLEX
 
-**Schema** (`python/qap/modules/rtl1_cplex/config_schema.json`):
+**Schema** (`python/qap/modules/rlt1_cplex/config_schema.json`):
 ```json
 {
-  "title": "RTL1 CPLEX Configuration",
+  "title": "RLT1 CPLEX Configuration",
   "type": "object",
   "properties": {
     "solver": {
       "type": "string",
-      "enum": ["rtl1_cplex"],
+      "enum": ["rlt1_cplex"],
       "description": "Solver to use"
     },
     "formulation": {
       "type": "string",
-      "enum": ["rtl1"],
+      "enum": ["rlt1"],
       "description": "Formulation type"
     },
     "time_limit": {
@@ -75,11 +75,11 @@ The C++ RTL1 with SCIP supports a `relaxation` option to choose between the defa
 }
 ```
 
-**Example** (`python/qap/modules/rtl1_cplex/example_config.json`):
+**Example** (`python/qap/modules/rlt1_cplex/example_config.json`):
 ```json
 {
-  "solver": "rtl1_cplex",
-  "formulation": "rtl1",
+  "solver": "rlt1_cplex",
+  "formulation": "rlt1",
   "time_limit": 120,
   "threads": 8
 }
@@ -278,7 +278,7 @@ jsonschema.validate(config, schema)
 ## Pre-created Configs
 
 The following example configs are already in `configs/`:
-- `rtl1_cplex.json` — RTL1 with 120s time limit, 8 threads
+- `rlt1_cplex.json` — RLT1 with 120s time limit, 8 threads
 - `form3_cplex.json` — Form3 value_layer with 120s time limit, 8 threads
 - `form3_scip.json` — Form3 value_layer SCIP with 120s time limit, 8 threads
 - `local_search.json` — Tabu search with 120s time limit, greedy init, seed 42

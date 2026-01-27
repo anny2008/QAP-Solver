@@ -1,6 +1,6 @@
 {
   "solver": "cplex",
-  "formulation": "rtl1",
+  "formulation": "rlt1",
   "time_limit": 120.0,
   "threads": 8,
   "use_heuristics": true,

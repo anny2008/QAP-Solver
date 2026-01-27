@@ -1,15 +1,15 @@
-# RTL1 CPLEX Module
+# RLT1 CPLEX Module
 
 **Solver**: CPLEX (via Gurobi or DOCplex)  
-**Formulation**: Relaxation-based Tightened Linear (RTL1)  
+**Formulation**: Relaxation-based Tightened Linear (RLT1)  
 **Method**: Exact (branch-and-bound)
 
 ## Configuration
 
 See `config_schema.json` for full schema. Key options:
 
-- `solver`: Must be `"rtl1_cplex"`
-- `formulation`: Must be `"rtl1"`
+- `solver`: Must be `"rlt1_cplex"`
+- `formulation`: Must be `"rlt1"`
 - `time_limit`: Time limit in seconds (default: 120)
 - `threads`: Number of threads (default: 8)
 
@@ -17,8 +17,8 @@ See `config_schema.json` for full schema. Key options:
 
 ```json
 {
-  "solver": "rtl1_cplex",
-  "formulation": "rtl1",
+  "solver": "rlt1_cplex",
+  "formulation": "rlt1",
   "time_limit": 120,
   "threads": 8
 }
@@ -29,7 +29,7 @@ See `config_schema.json` for full schema. Key options:
 ```json
 {
   "instance": "chr12a",
-  "solver": "rtl1_cplex",
+  "solver": "rlt1_cplex",
   "objective": 11156,
   "lower_bound": 11156,
   "gap": 0.0,

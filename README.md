@@ -5,7 +5,7 @@ A flexible, modular toolkit for solving Quadratic Assignment Problem (QAP) insta
 ## Purpose
 
 This framework provides a unified interface to solve QAP instances using different solver methods:
-- **Exact methods**: RTL1 (Relaxation-based Tightened Linear) and Form3 (binary cubic formulation) with CPLEX or SCIP
+- **Exact methods**: RLT1 (Relaxation-based Tightened Linear) and Form3 (binary cubic formulation) with CPLEX or SCIP
 - **Heuristic methods**: Tabu Search, Simulated Annealing, Genetic Algorithm
 - **Unified configuration**: JSON-based config format for all solvers
 - **Standard result format**: Consistent JSON output across all methods
@@ -40,7 +40,7 @@ python python/examples/solve.py \
 ```
 
 **Available modules:**
-- `rtl1_cplex` — RTL1 formulation with CPLEX
+- `rlt1_cplex` — RLT1 formulation with CPLEX
 - `form3_cplex` — Form3 formulation with CPLEX
 - `form3_scip` — Form3 formulation with SCIP (C++ backend)
 - `local_search` — Heuristic methods (Tabu/SA/GA)
@@ -76,7 +76,7 @@ Output is saved to JSON with solution, objective value, bounds, and timing:
 
 ```
 QAP-Solver/
-├── python/qap/modules/          # Solver modules (rtl1_cplex, form3_cplex, form3_scip, local_search)
+├── python/qap/modules/          # Solver modules (rlt1_cplex, form3_cplex, form3_scip, local_search)
 ├── python/examples/solve.py     # Main entry point (CLI dispatcher)
 ├── configs/                     # User configuration files (JSON)
 ├── data/                        # QAP instances (QAPLIB format)

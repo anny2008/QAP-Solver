@@ -1149,7 +1149,7 @@ void set_up_volume_parameters(VOL_problem &vol_problem, bool verbose) {
     vol_problem.parm.redtestinvl = 20;
     
     // Printing control
-    vol_problem.parm.printflag = verbose ? 3 : 1;  // 1=iteration info, 3=add lambda info
+    vol_problem.parm.printflag = verbose ? 3 : 0;  // 1=iteration info, 3=add lambda info
     vol_problem.parm.printinvl = 100;
     vol_problem.parm.heurinvl = 100;
 }
@@ -1269,13 +1269,13 @@ VolumeResult solve_rlt1_volume_relax(const Problem &problem,
     set_up_volume_parameters(vol_problem, verbose);
     bool fixed_ok = hooks->set_fixed_variables(fixed);
     if (!fixed_ok) {
-        std::cerr << "\rError: Inconsistent fixed variables provided." << std::flush;
+        if (verbose) std::cerr << "\rError: Inconsistent fixed variables provided." << std::flush;
 
         VolumeResult result;
         result.lower_bound = DBL_MAX;
         return result; // return infinite bound
     } else {
-        std::cout << "\rFixed variables set successfully." << std::flush;
+        if (verbose) std::cout << "\rFixed variables set successfully." << std::flush;
     }
     // Solve the Volume relaxation
     

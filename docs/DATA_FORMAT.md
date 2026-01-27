@@ -70,7 +70,7 @@ All solvers output results in a consistent JSON format.
 | Field | Type | Description |
 |-------|------|-------------|
 | `instance` | string | Instance name (without path or extension) |
-| `solver` | string | Solver/method identifier (rtl1_cplex, form3_cplex, form3_scip, local_search) |
+| `solver` | string | Solver/method identifier (rlt1_cplex, form3_cplex, form3_scip, local_search) |
 | `objective` | number \| null | Best objective value found (null if no solution found) |
 | `lower_bound` | number \| null | Lower bound on optimal solution (null for heuristics) |
 | `gap` | number \| null | Optimality gap: (objective - lower_bound) / lower_bound × 100% (null if not applicable) |
@@ -147,7 +147,7 @@ Place results in the `results/` directory:
 
 ```
 results/
-├── chr12a_rtl1_cplex.json
+├── chr12a_rlt1_cplex.json
 ├── chr12a_form3_cplex.json
 ├── chr12a_form3_scip.json
 ├── chr12a_local_search.json

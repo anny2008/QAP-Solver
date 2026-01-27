@@ -6,7 +6,7 @@
 - `python/qap/` — Main Python package
   - `core/` — Shared utilities (problem.py, io.py, solution.py to be implemented)
   - `modules/` — Solver modules (4 sub-packages)
-    - `rtl1_cplex/` — RTL1 formulation with CPLEX
+    - `rlt1_cplex/` — RLT1 formulation with CPLEX
     - `form3_cplex/` — Form3 formulation with CPLEX
     - `form3_scip/` — Form3 formulation with SCIP backend
     - `local_search/` — Heuristic methods (Tabu, SA, GA)
@@ -25,14 +25,14 @@ Each of the 4 solver modules has:
 **Example modules:**
 | Module | Solver | Formulation | Type |
 |--------|--------|-------------|------|
-| `rtl1_cplex` | CPLEX | RTL1 | Exact |
+| `rlt1_cplex` | CPLEX | RLT1 | Exact |
 | `form3_cplex` | CPLEX | Form3 (binary cubic) | Exact |
 | `form3_scip` | SCIP (C++) | Form3 (binary cubic) | Exact |
 | `local_search` | Native Python | Tabu/SA/GA | Heuristic |
 
 ### 3. **User Config Files**
 Pre-created example configs in `configs/`:
-- `rtl1_cplex.json` — 120s time limit, 8 threads
+- `rlt1_cplex.json` — 120s time limit, 8 threads
 - `form3_cplex.json` — value_layer decomposition, 120s time limit, 8 threads
 - `form3_scip.json` — value_layer decomposition, 120s time limit, 8 threads
 - `local_search.json` — Tabu search, greedy init, 120s time limit, seed 42
@@ -55,7 +55,7 @@ Pre-created example configs in `configs/`:
   - Status and roadmap
 
 - **Module READMEs** — One per solver module:
-  - `python/qap/modules/rtl1_cplex/README.md`
+  - `python/qap/modules/rlt1_cplex/README.md`
   - `python/qap/modules/form3_cplex/README.md`
   - `python/qap/modules/form3_scip/README.md`
   - `python/qap/modules/local_search/README.md`

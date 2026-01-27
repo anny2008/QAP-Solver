@@ -308,8 +308,15 @@ static SCIP_DECL_RELAXEXEC(relaxExecVolume) {
     }
 
     FixedVariables fixed = build_fixed_from_map(map_fixed, n);
-    VolumeResult res = solve_rlt1_volume_relax(data->problem, fixed, false, data->last_dual, data->formulation_name);
-    std::cout << "Volume solving status: " << res.status << std::flush;
+    VolumeResult res = solve_rlt1_volume_relax(data->problem, fixed, data->relaxation_info, data->last_dual, data->formulation_name);
+    
+    if (data->relaxation_info) {
+        if (res.status == 0) {
+            std::cout << "\rVolume relaxation solved: lower bound = " << std::fixed << std::setprecision(6) << res.lower_bound << std::flush;
+        } else {
+            std::cout << "\rVolume relaxation failed to solve." << std::flush;
+        }
+    }
     if (res.status != 0) {
         *result = SCIP_DIDNOTRUN;
         return SCIP_OKAY;
@@ -341,7 +348,9 @@ static SCIP_DECL_RELAXEXEC(relaxExecVolume) {
 
     *lowerbound = res.lower_bound;
     *result = SCIP_SUCCESS;
-    std::cout << "\rVolume relaxation solved: lower bound = " << std::fixed << std::setprecision(6) << res.lower_bound << std::flush;
+    if (data->relaxation_info) {
+        std::cout << "\rVolume relaxation solved: lower bound = " << std::fixed << std::setprecision(6) << res.lower_bound << std::flush;
+    }
     return SCIP_OKAY;
 }
 

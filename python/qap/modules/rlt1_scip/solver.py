@@ -1,7 +1,7 @@
 """
-RTL1 SCIP Solver Module
+RLT1 SCIP Solver Module
 
-Relaxation-based Tightened Linear (RTL1) formulation solved with SCIP.
+Relaxation-based Tightened Linear (RLT1) formulation solved with SCIP.
 Uses PySCIPOpt Python interface for maximum compatibility.
 Supports binary variables, relaxed 0-1 variables, and warm-start solutions.
 """
@@ -25,8 +25,8 @@ except ModuleNotFoundError:
     from qap.core.solution_io import read_warmstart
 
 
-class RTL1SCIPSolver:
-    """RTL1 formulation solver using SCIP via PySCIPOpt."""
+class RLT1SCIPSolver:
+    """RLT1 formulation solver using SCIP via PySCIPOpt."""
 
     def __init__(self, config: Dict[str, Any]):
         """
@@ -43,8 +43,8 @@ class RTL1SCIPSolver:
                     - preprocessing_symmetry (int): Symmetry level (default: 5)
         """
         self.config = config
-        self.solver_name = config.get("solver", "rtl1_scip")
-        self.formulation = config.get("formulation", "rtl1")
+        self.solver_name = config.get("solver", "rlt1_scip")
+        self.formulation = config.get("formulation", "rlt1")
         self.is_relax = config.get("is_relax", False)
         self.time_limit = config.get("time_limit", 120)
         self.threads = config.get("threads", 8)
@@ -52,10 +52,10 @@ class RTL1SCIPSolver:
         self.preprocessing_symmetry = config.get("preprocessing_symmetry", 5)
 
         # Validate config
-        assert self.formulation == "rtl1", "RTL1 solver requires formulation='rtl1'"
+        assert self.formulation == "rlt1", "RLT1 solver requires formulation='rlt1'"
 
     @classmethod
-    def from_config_file(cls, config_path: str) -> "RTL1SCIPSolver":
+    def from_config_file(cls, config_path: str) -> "RLT1SCIPSolver":
         """
         Create solver from config file.
 
@@ -63,7 +63,7 @@ class RTL1SCIPSolver:
             config_path (str): Path to config JSON file
 
         Returns:
-            RTL1SCIPSolver: Initialized solver
+            RLT1SCIPSolver: Initialized solver
         """
         with open(config_path, "r") as f:
             config = json.load(f)
@@ -73,7 +73,7 @@ class RTL1SCIPSolver:
         self, problem: Problem, fixed_variables: Optional[List[Tuple[int, int]]] = None
     ) -> Tuple[Model, Dict, Dict]:
         """
-        Create SCIP model for RTL1 formulation.
+        Create SCIP model for RLT1 formulation.
 
         Args:
             problem (Problem): QAP problem instance
@@ -86,7 +86,7 @@ class RTL1SCIPSolver:
         distances = problem.D
         flows = problem.F
 
-        model = Model("QAP_RTL1")
+        model = Model("QAP_RLT1")
 
         # Configure solver
         model.hideOutput(not self.log_output)
@@ -110,7 +110,7 @@ class RTL1SCIPSolver:
                     x_vars[(i, u)] = model.addVar(
                         vtype="B", name=f"x_{i}_{u}"
                     )
-        # CONTINUOUS variables for y (RTL1 linearization variables are always continuous!)
+        # CONTINUOUS variables for y (RLT1 linearization variables are always continuous!)
         for i in range(n):
             for u in range(n):
                 for j in range(n):
@@ -185,7 +185,7 @@ class RTL1SCIPSolver:
         warmstart: Optional[Dict[Tuple[int, int], float]] = None,
     ) -> Solution:
         """
-        Solve the QAP problem using RTL1 formulation.
+        Solve the QAP problem using RLT1 formulation.
 
         Args:
             problem (Problem): QAP problem instance
@@ -271,7 +271,7 @@ class RTL1SCIPSolver:
             if is_feasible and len(assignment) == problem.n:
                 actual_objective = problem.evaluate_assignment(assignment)
             else:
-                # Use model objective (RTL1 linearization)
+                # Use model objective (RLT1 linearization)
                 actual_objective = model.getSolObjVal(best_sol)
         else:
             # No solution found
@@ -369,7 +369,7 @@ class RTL1SCIPSolver:
 
         print(f"\n{'='*60}")
         print(f"Instance: {instance_name}")
-        print(f"Solver: RTL1 SCIP (PySCIPOpt)")
+        print(f"Solver: RLT1 SCIP (PySCIPOpt)")
         print(f"{'='*60}")
 
         result = self.solve_instance(instance_path)
@@ -399,20 +399,20 @@ if __name__ == "__main__":
 
     # Create solver
     config = {
-        "solver": "rtl1_scip",
-        "formulation": "rtl1",
+        "solver": "rlt1_scip",
+        "formulation": "rlt1",
         "is_relax": False,  # Use binary variables
         "time_limit": 120,
         "threads": 8,
         "log_output": True,
     }
 
-    solver = RTL1SCIPSolver(config)
+    solver = RLT1SCIPSolver(config)
 
     # Example: solve a single instance
     if len(sys.argv) > 1:
         instance_file = sys.argv[1]
-        solver.solve_instance(instance_file, output_path="rtl1_scip_result.json")
+        solver.solve_instance(instance_file, output_path="rlt1_scip_result.json")
     else:
         print("Usage: python solver.py <instance_file>")
         print(

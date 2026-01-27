@@ -128,7 +128,7 @@ which scip && echo 'SCIP OK'
 Pre-created example configs are in `configs/`:
 ```
 configs/
-├── rtl1_cplex.json
+├── rlt1_cplex.json
 ├── form3_cplex.json
 ├── form3_scip.json
 └── local_search.json

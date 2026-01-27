@@ -77,8 +77,8 @@ Options:
 Use the repository-wide runner to build and launch modules from the repo root:
 
 ```bash
-# Build SFD and RTL1 C++ binaries
-python tools/qap_cli.py build --module sfd_scip rtl1_scip
+# Build SFD and RLT1 C++ binaries
+python tools/qap_cli.py build --module sfd_scip rlt1_scip
 
 # Run SFD (SCIP) with the JSON config
 python tools/qap_cli.py run --module sfd_scip --config configs/sfd_scip.json
@@ -87,17 +87,17 @@ python tools/qap_cli.py run --module sfd_scip --config configs/sfd_scip.json
 python tools/qap_cli.py run --module sfd_scip --instance /path/to/instance.dat \
   --warmstart /path/to/instance.sln --time-limit 300 --threads 8 --log
 
-# Run RTL1 (CPLEX Python) using its config
-python tools/qap_cli.py run --module rtl1_cplex --instance /path/to/instance.dat \
-  --config configs/rtl1_cplex.json --output rtl1_result.json
+# Run RLT1 (CPLEX Python) using its config
+python tools/qap_cli.py run --module rlt1_cplex --instance /path/to/instance.dat \
+  --config configs/rlt1_cplex.json --output rlt1_result.json
 ```
 
 Modules supported by the runner:
 - `sfd_scip` (C++ binary)
-- `rtl1_scip` (C++ binary)
-- `rtl1_volume` (C++ binary)
-- `rtl1_cplex` (Python, docplex/cplex required)
-- `rtl1_scip_py` (Python, PySCIPOpt required)
+- `rlt1_scip` (C++ binary)
+- `rlt1_volume` (C++ binary)
+- `rlt1_cplex` (Python, docplex/cplex required)
+- `rlt1_scip_py` (Python, PySCIPOpt required)
 - `sfd_cplex` (Python, requires decomposition wiring)
 - `local_search` (Python, heuristics placeholder)
 

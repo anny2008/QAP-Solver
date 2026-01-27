@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Demo script for RTL1 SCIP Solver
+Demo script for RLT1 SCIP Solver
 
 Shows how to:
 - Solve single instances
@@ -19,7 +19,7 @@ import time
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from python.qap.core import Problem, Solution
-from python.qap.modules.rtl1_scip import RTL1SCIPSolver
+from python.qap.modules.rlt1_scip import RLT1SCIPSolver
 
 
 def solve_single_instance(instance_path: str, config_dict: dict = None, warm_start: bool = False):
@@ -38,8 +38,8 @@ def solve_single_instance(instance_path: str, config_dict: dict = None, warm_sta
     # Default config
     if config_dict is None:
         config_dict = {
-            "solver": "rtl1_scip",
-            "formulation": "rtl1",
+            "solver": "rlt1_scip",
+            "formulation": "rlt1",
             "is_relax": False,
             "time_limit": 120,
             "threads": 8,
@@ -48,7 +48,7 @@ def solve_single_instance(instance_path: str, config_dict: dict = None, warm_sta
         }
     
     # Create solver
-    solver = RTL1SCIPSolver(config_dict)
+    solver = RLT1SCIPSolver(config_dict)
     
     # Try to load warm-start solution
     warm_start_path = None
@@ -63,7 +63,7 @@ def solve_single_instance(instance_path: str, config_dict: dict = None, warm_sta
         solution = solver.solve_instance(
             instance_path,
             warm_start_path=warm_start_path,
-            output_path=f"rtl1_scip_{Path(instance_path).stem}.json"
+            output_path=f"rlt1_scip_{Path(instance_path).stem}.json"
         )
         
         # Print results
@@ -112,8 +112,8 @@ def batch_solve_directory(directory: str, pattern: str = "*.dat", time_limit: in
     
     # Create config
     config = {
-        "solver": "rtl1_scip",
-        "formulation": "rtl1",
+        "solver": "rlt1_scip",
+        "formulation": "rlt1",
         "is_relax": False,
         "time_limit": time_limit,
         "threads": 8,
@@ -129,7 +129,7 @@ def batch_solve_directory(directory: str, pattern: str = "*.dat", time_limit: in
         print(f"[{idx}/{len(instances)}] {instance_name}...", end=" ", flush=True)
         
         try:
-            solver = RTL1SCIPSolver(config)
+            solver = RLT1SCIPSolver(config)
             start = time.time()
             
             solution = solver.solve_instance(str(instance_path))
@@ -184,21 +184,21 @@ def batch_solve_directory(directory: str, pattern: str = "*.dat", time_limit: in
 
 def main():
     parser = argparse.ArgumentParser(
-        description="RTL1 SCIP Solver Demo",
+        description="RLT1 SCIP Solver Demo",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   # Solve single instance
-  python demo_rtl1_scip.py -i /path/to/chr12a.dat
+  python demo_rlt1_scip.py -i /path/to/chr12a.dat
   
   # Solve with warm-start
-  python demo_rtl1_scip.py -i /path/to/chr12a.dat -w
+  python demo_rlt1_scip.py -i /path/to/chr12a.dat -w
   
   # Batch solve with custom time limit
-  python demo_rtl1_scip.py -d /path/to/instances -t 60
+  python demo_rlt1_scip.py -d /path/to/instances -t 60
   
   # Relaxed mode (continuous variables)
-  python demo_rtl1_scip.py -i /path/to/chr12a.dat -r
+  python demo_rlt1_scip.py -i /path/to/chr12a.dat -r
         """
     )
     
@@ -242,8 +242,8 @@ Examples:
     
     # Create config
     config = {
-        "solver": "rtl1_scip",
-        "formulation": "rtl1",
+        "solver": "rlt1_scip",
+        "formulation": "rlt1",
         "is_relax": args.relax,
         "time_limit": args.time_limit,
         "threads": args.threads,

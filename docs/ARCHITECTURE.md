@@ -13,9 +13,9 @@ QAP-Solver/
 │   │   │   ├── io.py               # QAPLIB loader, result writer
 │   │   │   └── solution.py         # Solution class definition
 │   │   ├── modules/
-│   │   │   ├── rtl1_cplex/
+│   │   │   ├── rlt1_cplex/
 │   │   │   │   ├── __init__.py
-│   │   │   │   ├── solver.py       # RTL1 formulation & CPLEX solver
+│   │   │   │   ├── solver.py       # RLT1 formulation & CPLEX solver
 │   │   │   │   ├── config_schema.json
 │   │   │   │   ├── example_config.json
 │   │   │   │   └── README.md
@@ -49,7 +49,7 @@ QAP-Solver/
 │           └── bin/
 │               └── form3_scip      # Compiled executable
 ├── configs/                        # User-provided configuration files
-│   ├── rtl1_cplex.json
+│   ├── rlt1_cplex.json
 │   ├── form3_cplex.json
 │   ├── form3_scip.json
 │   └── local_search.json
@@ -65,11 +65,11 @@ QAP-Solver/
 
 ## Solver Modules
 
-### 1. RTL1 CPLEX
+### 1. RLT1 CPLEX
 - **Solver**: CPLEX (via Gurobi/DOCplex)
-- **Formulation**: Relaxation-based Tightened Linear (RTL1)
+- **Formulation**: Relaxation-based Tightened Linear (RLT1)
 - **Type**: Exact (branch-and-bound)
-- **Location**: `python/qap/modules/rtl1_cplex/`
+- **Location**: `python/qap/modules/rlt1_cplex/`
 - **Config**: See [CONFIGURATION.md](CONFIGURATION.md)
 
 ### 2. Form3 CPLEX

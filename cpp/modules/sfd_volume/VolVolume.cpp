@@ -417,7 +417,7 @@ VOL_problem::print_info(const int iter,
              << " P-vu=" << std::fixed << std::setprecision(6) << (pstar.value - indc.vu)
              << " xrc=" << std::fixed << std::setprecision(6) << dual.xrc
              << "   "
-             << std::endl;
+             << std::flush;
 }
 
 //######################################################################
@@ -448,7 +448,7 @@ VOL_problem::solve(VOL_user_hooks& hooks, const bool use_preset_dual)
    if (dual.lcost  < 0) {
       if (parm.printflag & 2)
          std::cout << "\rInitial dual cost is negative: " << std::fixed << std::setprecision(6)
-                   << dual.lcost << ", reset dual to 0           " << std::endl;
+                   << dual.lcost << ", reset dual to 0           " << std::flush;
       dsol = 0.0;
       dual.u = dsol;
       retval = hooks.compute_rc(dual.u, rc); // compute reduced costs
@@ -516,7 +516,7 @@ VOL_problem::solve(VOL_user_hooks& hooks, const bool use_preset_dual)
    	 const double fact = alpha_factor.factor(parm, dstar.lcost, alpha_);
    	 if (fact != 1.0 && (parm.printflag & 2)) {
     	   std::cout << "\rdecreasing alpha to " << std::fixed << std::setprecision(6)
-              << (alpha_ * fact) << "                                         " << std::endl;
+              << (alpha_ * fact) << "                                         " << std::flush;
    	 }
    	 alpha_ *= fact;
       }
@@ -562,13 +562,13 @@ VOL_problem::solve(VOL_user_hooks& hooks, const bool use_preset_dual)
       
       // test optimality
       if (primal_feas && small_gap){
-   	if (parm.printflag & 2) std::cout << "\rsmall lp gap                                         " << std::endl;
+   	if (parm.printflag & 2) std::cout << "\rsmall lp gap                                         " << std::flush;
 	break;
       }
 
       // test proving integer optimality
       if (best_ub - dstar.lcost < parm.granularity){
-   	if (parm.printflag & 2) std::cout << "\rsmall ip gap                                         " << std::endl;
+   	if (parm.printflag & 2) std::cout << "\rsmall ip gap                                         " << std::flush;
 	break;
       }
 
@@ -577,7 +577,7 @@ VOL_problem::solve(VOL_user_hooks& hooks, const bool use_preset_dual)
       if (iter_ > ascent_first_check) {
 	 if (dstar.lcost - lcost_sequence[k] <
 	     VolAbs(lcost_sequence[k]) * parm.minimum_rel_ascent){
-	   if (parm.printflag & 2) std::cout << "\rsmall improvement                                    " << std::endl;
+	   if (parm.printflag & 2) std::cout << "\rsmall improvement                                    " << std::flush;
 	   break;
 	 }
       }
@@ -658,7 +658,7 @@ VOL_problem::readjust_target(const double oldtarget, const double lcost) const
       }
       if (target != oldtarget && (parm.printflag & 2)) {
    	 std::cout << "\rreadjusting target: new target = " << std::fixed << std::setprecision(6)
-                      << target << "                              " << std::endl;
+                      << target << "                              " << std::flush;
          }
    }
    return target;

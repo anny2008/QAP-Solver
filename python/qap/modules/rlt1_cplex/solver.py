@@ -1,7 +1,7 @@
 """
-RTL1 CPLEX Solver Module
+RLT1 CPLEX Solver Module
 
-Relaxation-based Tightened Linear (RTL1) formulation solved with CPLEX.
+Relaxation-based Tightened Linear (RLT1) formulation solved with CPLEX.
 Supports binary variables, relaxed 0-1 variables, and warm-start solutions.
 
 Reference: Based on solve_QAP_RLT1_cplex from qap_new_formulation.py
@@ -24,8 +24,8 @@ from qap.core.io import write_result
 from qap.core.solution_io import read_warmstart
 
 
-class RTL1CPLEXSolver:
-    """RTL1 formulation solver using CPLEX."""
+class RLT1CPLEXSolver:
+    """RLT1 formulation solver using CPLEX."""
 
     def __init__(self, config: Dict[str, Any]):
         """
@@ -42,8 +42,10 @@ class RTL1CPLEXSolver:
                     - preprocessing_symmetry (int): Symmetry level (default: 5)
         """
         self.config = config
-        self.solver_name = config.get("solver", "rtl1_cplex")
-        self.formulation = config.get("formulation", "rtl1")
+        self.instance_path = config.get("instance", "")
+        self.instance = Path(self.instance_path).stem if self.instance_path else "unknown"
+        self.solver_name = config.get("solver", "rlt1_cplex")
+        self.formulation = config.get("formulation", "rlt1")
         self.is_relax = config.get("is_relax", False)
         self.time_limit = config.get("time_limit", 120)
         self.threads = config.get("threads", 8)
@@ -51,10 +53,10 @@ class RTL1CPLEXSolver:
         self.preprocessing_symmetry = config.get("preprocessing_symmetry", 5)
 
         # Validate config
-        assert self.formulation == "rtl1", "RTL1 solver requires formulation='rtl1'"
+        assert self.formulation == "rlt1", "RLT1 solver requires formulation='rlt1'"
 
     @classmethod
-    def from_config_file(cls, config_path: str) -> "RTL1CPLEXSolver":
+    def from_config_file(cls, config_path: str) -> "RLT1CPLEXSolver":
         """
         Create solver from config file.
 
@@ -62,7 +64,7 @@ class RTL1CPLEXSolver:
             config_path (str): Path to config JSON file
 
         Returns:
-            RTL1CPLEXSolver: Initialized solver
+            RLT1CPLEXSolver: Initialized solver
         """
         with open(config_path, "r") as f:
             config = json.load(f)
@@ -72,7 +74,7 @@ class RTL1CPLEXSolver:
         self, problem: Problem, fixed_variables: Optional[List[Tuple[int, int]]] = None
     ) -> Tuple[Model, Dict, Dict]:
         """
-        Create CPLEX model for RTL1 formulation.
+        Create CPLEX model for RLT1 formulation.
 
         Args:
             problem (Problem): QAP problem instance
@@ -85,7 +87,7 @@ class RTL1CPLEXSolver:
         distances = problem.D
         flows = problem.F
 
-        model = Model(name="QAP_RTL1")
+        model = Model(name="QAP_RLT1")
 
         # Create variables
         if self.is_relax:
@@ -170,7 +172,7 @@ class RTL1CPLEXSolver:
         warmstart: Optional[Dict[Tuple[int, int], float]] = None,
     ) -> Solution:
         """
-        Solve the QAP problem using RTL1 formulation.
+        Solve the QAP problem using RLT1 formulation.
 
         Args:
             problem (Problem): QAP problem instance
@@ -200,48 +202,45 @@ class RTL1CPLEXSolver:
 
         # Solve
         solution = model.solve(log_output=self.log_output)
-
+        cpx = model.get_cplex()
+        
         elapsed_time = time.time() - start_time
-
+        solution = cpx.solution
         # Extract results
         if solution:
             # Extract assignment from x variables
             assignment = []
             is_feasible = True
-            for i in range(problem.n):
-                best_u = -1
-                best_val = -1
-                for u in range(problem.n):
-                    val = solution.get_value(x[i, u])
-                    if val > best_val:
-                        best_val = val
-                        best_u = u
+            # for i in range(problem.n):
+            #     best_u = -1
+            #     best_val = -1
+            #     for u in range(problem.n):
+            #         val = solution.get_value(x[i, u])
+            #         if val > best_val:
+            #             best_val = val
+            #             best_u = u
                 
-                if best_val > 0.5:
-                    assignment.append(best_u)
-                else:
-                    # Fractional solution - round best value
-                    assignment.append(best_u)
-                    is_feasible = False
+            #     if best_val > 0.5:
+            #         assignment.append(best_u)
+            #     else:
+            #         # Fractional solution - round best value
+            #         assignment.append(best_u)
+            #         is_feasible = False
 
             # Compute actual QAP objective from assignment if feasible
             if is_feasible and len(assignment) == problem.n:
                 actual_objective = problem.evaluate_assignment(assignment)
             else:
                 # Can't evaluate non-integer solution
-                actual_objective = solution.objective_value
+                actual_objective = solution.get_objective_value()
             
-            # The RTL1 objective value is a lower bound on the QAP
-            # (since RTL1 linearizes and relaxes the QAP)
-            rtl1_lower_bound = solution.objective_value
-
             # Create solution object
             result = Solution(
-                instance="unknown",  # Will be set by caller
+                instance=self.instance,  # Will be set by caller
                 solver=self.solver_name,
                 assignment=assignment if is_feasible else None,
-                objective=actual_objective,
-                lower_bound=rtl1_lower_bound,
+                objective=cpx.solution.get_objective_value(),
+                lower_bound=model.solve_details.best_bound,
                 time=elapsed_time,
             )
 
@@ -249,7 +248,7 @@ class RTL1CPLEXSolver:
         else:
             # No solution found
             result = Solution(
-                instance="unknown",
+                instance=self.instance,
                 solver=self.solver_name,
                 assignment=None,
                 objective=None,
@@ -348,20 +347,20 @@ if __name__ == "__main__":
 
     # Create solver
     config = {
-        "solver": "rtl1_cplex",
-        "formulation": "rtl1",
+        "solver": "rlt1_cplex",
+        "formulation": "rlt1",
         "is_relax": False,  # Use binary variables
         "time_limit": 120,
         "threads": 8,
         "log_output": True,
     }
 
-    solver = RTL1CPLEXSolver(config)
+    solver = RLT1CPLEXSolver(config)
 
     # Example: solve a single instance
     if len(sys.argv) > 1:
         instance_file = sys.argv[1]
-        solver.solve_instance(instance_file, output_path="rtl1_result.json")
+        solver.solve_instance(instance_file, output_path="rlt1_result.json")
     else:
         print("Usage: python solver.py <instance_file>")
         print(

@@ -1,6 +1,6 @@
-# RTL1 Volume Algorithm Solver
+# RLT1 Volume Algorithm Solver
 
-Implementation of the Volume Algorithm for solving the RTL1 (Reformulation-Linearization Technique Level 1) relaxation of the Quadratic Assignment Problem.
+Implementation of the Volume Algorithm for solving the RLT1 (Reformulation-Linearization Technique Level 1) relaxation of the Quadratic Assignment Problem.
 
 ## Overview
 
@@ -10,7 +10,7 @@ The Volume Algorithm is a subgradient-based method that produces both:
 
 ## Formulation
 
-### RTL1 Relaxation
+### RLT1 Relaxation
 
 Variables:
 - `x[i,u]`: Binary assignment variables (1 if facility i is at location u)
@@ -41,7 +41,7 @@ The subproblem decomposes into:
 ## Usage
 
 ```bash
-./rtl1_volume_solver <instance.dat> [options]
+./rlt1_volume_solver <instance.dat> [options]
 ```
 
 ### Options
@@ -55,10 +55,10 @@ The subproblem decomposes into:
 
 ```bash
 # Solve nug12 with 60 second time limit
-./rtl1_volume_solver nug12.dat --time 60 --threads 4 --output nug12.sln
+./rlt1_volume_solver nug12.dat --time 60 --threads 4 --output nug12.sln
 
 # Solve with detailed logging
-./rtl1_volume_solver chr15a.dat --log --threads 8
+./rlt1_volume_solver chr15a.dat --log --threads 8
 ```
 
 ## Algorithm Parameters
@@ -99,7 +99,7 @@ The solver prints:
   - Violation computation: Parallel constraint evaluation
 
 - **Memory**: O(n^4) for y variables and lambda duals
-- **Complexity**: Each iteration is O(n^4) due to RTL1 structure
+- **Complexity**: Each iteration is O(n^4) due to RLT1 structure
 
 ## References
 

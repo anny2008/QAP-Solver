@@ -3,7 +3,7 @@
 Quick Start Guide: Using Unified Solution I/O
 
 This file demonstrates practical patterns for using the unified solution I/O interface
-with the RTL1 SCIP solver.
+with the RLT1 SCIP solver.
 """
 
 # ============================================================================
@@ -35,20 +35,20 @@ def pattern_1_file_io():
 
 def pattern_2_warmstart_from_file():
     """Load a warm-start from a saved solution file."""
-    from qap.modules.rtl1_scip import RTL1SCIPSolver
+    from qap.modules.rlt1_scip import RLT1SCIPSolver
     from qap.core import Problem
     
     # Configuration
     config = {
-        "solver": "rtl1_scip",
-        "formulation": "rtl1",
+        "solver": "rlt1_scip",
+        "formulation": "rlt1",
         "time_limit": 60,
         "threads": 4,
         "log_output": False
     }
     
     # Initialize solver
-    solver = RTL1SCIPSolver(config)
+    solver = RLT1SCIPSolver(config)
     
     # Method 1: Using solver's built-in method
     warm_start = solver.load_warmstart_from_file("previous_solution.sln")
@@ -74,7 +74,7 @@ def pattern_3_two_stage_solving():
     Use heuristic to get initial solution, then warm-start exact solver.
     Demonstrates typical optimization workflow.
     """
-    from qap.modules.rtl1_scip import RTL1SCIPSolver
+    from qap.modules.rlt1_scip import RLT1SCIPSolver
     from qap.core import Problem
     from qap.core.solution_io import read_warmstart, write_solution
     
@@ -93,13 +93,13 @@ def pattern_3_two_stage_solving():
     # Stage 2: Exact solver with warm-start
     print("Stage 2: Running exact solver with warm-start...")
     config = {
-        "solver": "rtl1_scip",
-        "formulation": "rtl1",
+        "solver": "rlt1_scip",
+        "formulation": "rlt1",
         "time_limit": 120,
         "threads": 8,
         "log_output": True
     }
-    solver = RTL1SCIPSolver(config)
+    solver = RLT1SCIPSolver(config)
     
     warm_start = read_warmstart("heuristic.sln")
     solution = solver.solve(problem, warm_start=warm_start)
@@ -121,19 +121,19 @@ def pattern_4_batch_processing():
     Solve multiple QAP instances and manage solutions systematically.
     """
     from pathlib import Path
-    from qap.modules.rtl1_scip import RTL1SCIPSolver
+    from qap.modules.rlt1_scip import RLT1SCIPSolver
     from qap.core import Problem
     from qap.core.solution_io import write_solution, read_solution
     
     # Configuration
     config = {
-        "solver": "rtl1_scip",
-        "formulation": "rtl1",
+        "solver": "rlt1_scip",
+        "formulation": "rlt1",
         "time_limit": 30,
         "threads": 4,
         "log_output": False
     }
-    solver = RTL1SCIPSolver(config)
+    solver = RLT1SCIPSolver(config)
     
     # Instance directory
     instance_dir = Path("./data/QAPLIB")
