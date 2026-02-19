@@ -183,9 +183,19 @@ class ColumnGenerationCPLEXSolver:
             print(f"Column Generation completed in {iteration} iterations, time={elapsed:.2f}s, obj={obj_val:.6f}")
         assignment = [max(M, key=lambda u: x_vals.get((i,u), 0.0)) for i in V]
         
-        for i,u in x_vals:
-            if x_vals[(i,u)] > self.eps:
-                print(f"x[{i},{u}] = {x_vals[(i,u)]:.6f}")
+        # for i,u in x_vals:
+        #     if x_vals[(i,u)] > self.eps:
+        #         print(f"x[{i},{u}] = {x_vals[(i,u)]:.6f}")
+                
+        # check if x is valid:
+        for i in V:
+            sum_i = sum(x_vals.get((i,u), 0.0) for u in M)
+            if abs(sum_i - 1.0) > self.eps:
+                print(f"Warning: x variables for location {i} sum to {sum_i:.6f} (should be 1.0)")
+        for u in M:
+            sum_u = sum(x_vals.get((i,u), 0.0) for i in V)
+            if abs(sum_u - 1.0) > self.eps:
+                print(f"Warning: x variables for facility {u} sum to {sum_u:.6f} (should be 1.0)")
 
         # Check if solution is valid
         # C1
