@@ -28,11 +28,13 @@ from cplex import SparsePair
 try:
     from python.qap.core import Problem, Solution, write_result
     from python.qap.core.solution_io import read_warmstart
+    from python.qap.decomposition import decompose_value_layer, decompose_value_only
 except ModuleNotFoundError:
     import sys
     sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
     from qap.core import Problem, Solution, write_result
     from qap.core.solution_io import read_warmstart
+    from qap.decomposition import decompose_value_layer, decompose_value_only
 
 
 class SFDLazyCallback(ConstraintCallbackMixin, LazyConstraintCallback):
@@ -49,22 +51,80 @@ class SFDLazyCallback(ConstraintCallbackMixin, LazyConstraintCallback):
         self.nb_lazy = 0
         self.eps = 1e-6
 
-    def initialize(self, x_vars: Dict, qap_problem: Problem):
+    def initialize(self, x_vars: Dict, e_vars: Dict, qap_problem: Problem, subgraphs: Dict):
         """
         Initialize callback with model variables and problem data.
         
         Args:
             x_vars: Binary assignment variables x[i,u]
             qap_problem: QAP problem instance
+            subgraphs: Subgraph decomposition data
         """
         self.x = x_vars
+        self.e = e_vars
         self.qap_problem = qap_problem
+        self.subgraphs = subgraphs
 
     def __call__(self):
         """Called by CPLEX at each lazy constraint check."""
         # Build solution from current node
         sol = self.make_complete_solution()
+        # self.add_2_opt_cuts(sol)
+        self.add_subgraph_constraints(sol)
+    
+    def add_subgraph_constraints(self, sol):
+        """Add subgraph flow constraints based on current solution."""
+        # This method can be implemented to add additional constraints based on the current solution
+        subgraphs = self.subgraphs
+        V = list(range(self.qap_problem.n))
+        M = list(range(self.qap_problem.m))
+        one_variables = []
+        # Find all variables set to 1.0        assignment = {}
+        for i in V:
+            for u in M:
+                var = self.x[i, u]
+                if sol.get_value(var) >= 0.99:  # Handle floating point
+                    one_variables.append((i, u))
+                    
+        found_violated = False
+        # Subgraph constraints
+        for k, (f_k, G_k, G_n_k) in subgraphs.items():
+            for i,u in one_variables:
+                for j,v in one_variables:
+                    if (u,v) in G_k:
+                        # Check if e[i,j,k] >= 1 is violated and add cut if necessary
+                        if sol.get_value(self.e[i, j, k]) < 0.99:
+                            # Add cut to enforce e[i,j,k] - x[i,u] - x[j,v] >= -1
+                            lhs = SparsePair(ind=[self.e[i, j, k].index, self.x[i, u].index, self.x[j, v].index], val=[1.0, -1.0, -1.0])
+                            rhs = -1.0
+                            self.add(lhs, 'G', rhs)
+                    
+                            self.nb_lazy += 1
+                            # print(f"Added subgraph cut for edge ({i},{j}) in layer {k} with flow {f_k}")
+                            found_violated = True
+            # if found_violated:
+            #     print(f"Added {self.nb_lazy} lazy constraints so far.")
+                # break  # Add cuts for one layer at a time to avoid too many cuts in one callback         
+                            
         
+        # for k, (f_k, G_k, G_n_k) in subgraphs.items():
+        #     for i in V:
+        #         for j in V:
+        #             for u in G_n_k:
+        #                 # Check if constraint is violated: e[i,j,k] >= x[i,u] + sum(x[j,v] for v in G_n_k if (u,v) in G_k) - 1
+        #                 lhs_value = sol.get_value(self.e[i, j, k])
+        #                 rhs_value = sol.get_value(self.x[i, u]) + sum(sol.get_value(self.x[j, v]) for v in G_n_k if (u, v) in G_k) - 1
+        #                 if lhs_value < rhs_value - self.eps:
+        #                     # Add constraint e[i,j,k] >= x[i,u] + sum(x[j,v] for v in G_n_k if (u,v) in G_k) - 1
+        #                     lhs = SparsePair(ind=[self.x[i, u].index] + [self.x[j, v].index for v in G_n_k if (u, v) in G_k],
+        #                                     val=[1.0] + [1.0 for v in G_n_k if (u, v) in G_k])
+        #                     rhs = 1.0
+        #                     self.add(lhs, 'G', rhs)
+        #                 # print(f"Added subgraph constraint for i={i}, j={j}, k={k}, u={u}")
+                        # return
+
+    def add_2_opt_cuts(self, sol):
+        """Add 2-opt cuts based on the current solution."""
         # Find all variables set to 1.0
         count_one = 0
         one_variable_indices = []
@@ -73,17 +133,17 @@ class SFDLazyCallback(ConstraintCallbackMixin, LazyConstraintCallback):
             if sol.get_value(var) >= 0.99:  # Handle floating point
                 count_one += 1
                 one_variable_indices.append((i, u))
-        
+
         # Add cuts for paired assignments
         if count_one > 0:
             M = 1e6
             x = self.x
-            
+
             for r, (i, u) in enumerate(one_variable_indices):
                 for (j, v) in one_variable_indices[r + 1:]:
                     if i == j or u == v:
                         continue
-                    
+
                     # Compute delta values for valid inequality
                     delta_u_ij = np.sum([
                         sol.get_value(x[k, g]) *
@@ -93,7 +153,7 @@ class SFDLazyCallback(ConstraintCallbackMixin, LazyConstraintCallback):
                         for g in range(self.qap_problem.n)
                         if k != i and k != j and g != u and g != v
                     ])
-                    
+
                     delta_v_ji = np.sum([
                         sol.get_value(x[k, g]) *
                         (self.qap_problem.F[g, v] * (self.qap_problem.D[k, i] - self.qap_problem.D[k, j]) +
@@ -102,7 +162,7 @@ class SFDLazyCallback(ConstraintCallbackMixin, LazyConstraintCallback):
                         for g in range(self.qap_problem.n)
                         if k != i and k != j and g != u and g != v
                     ])
-                    
+
                     # Add cut if violated
                     if delta_u_ij + delta_v_ji < -self.eps:
                         self._add_cut(i, u, j, v, delta_u_ij, delta_v_ji, M)
@@ -209,50 +269,96 @@ class SFDSolver:
             x_vars: Assignment variables
         """
         n = problem.n
+        m = problem.m
+        V = list(range(n))
+        M = list(range(m))
         distances = problem.D
         flows = problem.F
 
         model = Model(name="QAP_SFD")
         
+        # # Variables
+        x = model.binary_var_matrix(n, m, name="x")
+        # e = model.continuous_var_dict(
+        #     ((i, j, k) for i in V for j in V for k in subgraphs),
+        #     name="e",
+        #     lb=0,
+        #     ub=1
+        # )
         # Variables
-        x = model.binary_var_matrix(n, n, name="x")
-        e = model.continuous_var_dict(
-            ((i, j, k) for i in range(n) for j in range(n) for k in subgraphs),
+        # x = model.continuous_var_matrix(n, m, name="x", ub=1, lb=0)
+        e = model.binary_var_dict(
+            ((i, j, k) for i in V for j in V for k in subgraphs),
             name="e",
-            lb=0,
-            ub=1
         )
+        # if m < n:
+        #     # add dummy locations if m < n
+        #     x_dummy = model.binary_var_matrix(n, 1, name="x_dummy")
+        
+        # check if problem has fixed assignments and add constraints
+        if problem.fixed_assignments:
+            print(f"Adding {problem.fixed_assignments} fixed assignment constraints.")
+            for i, u in problem.fixed_assignments.items():
+                model.add_constraint(x[i, u] == 1, ctname=f"fixed_{i}_{u}")
 
         # Objective function
         model.minimize(model.sum(
             distances[i, j] * subgraphs[k][0] * e[i, j, k]
-            for i in range(n) for j in range(n) for k in subgraphs
+            for i in V for j in V for k in subgraphs
         ))
-
+        
         # Assignment constraints
-        for i in range(n):
+        for i in V:
             model.add_constraint(
-                model.sum(x[i, u] for u in range(n)) == 1,
+                model.sum(x[i, u] for u in M) <= 1,
                 ctname=f"assign_facility_{i}"
             )
-        for u in range(n):
+        for u in M:
             model.add_constraint(
-                model.sum(x[i, u] for i in range(n)) == 1,
+                model.sum(x[i, u] for i in V) == 1,
                 ctname=f"assign_location_{u}"
             )
 
-        # Subgraph constraints
-        for k, (f_k, G_k, G_n_k) in subgraphs.items():
-            if not self.is_relax:
-                for i in range(n):
-                    for j in range(n):
-                        for u in G_n_k:
-                            model.add_constraint(
-                                e[i, j, k] >= x[i, u] + model.sum(
-                                    x[j, v] for v in G_n_k if (u, v) in G_k
-                                ) - 1,
-                                ctname=f"edge_link_{i}_{j}_{u}_{k}"
-                            )
+        # # Assignment constraints
+        # if m < n:
+        #     # Add constraints to ensure dummy locations are only assigned to one facility
+        #     for i in V:
+        #         model.add_constraint(
+        #             model.sum(x[i, u] for u in M) + x_dummy[i, 0] == 1,
+        #             ctname=f"assign_facility_{i}"
+        #         )
+        #     model.add_constraint(
+        #         model.sum(x_dummy[i, 0] for i in V) == n - m,
+        #         ctname=f"assign_location_dummy"
+        #     )
+
+
+        # else:
+        #     for i in V:
+        #         model.add_constraint(
+        #             model.sum(x[i, u] for u in M) == 1,
+        #             ctname=f"assign_facility_{i}"
+        #         )
+        # for u in M:
+        #     model.add_constraint(
+        #         model.sum(x[i, u] for i in V) == 1,
+        #         ctname=f"assign_location_{u}"
+        #     )
+
+        if not self.use_cuts:
+            # Add subgraph constraints directly if not using lazy constraints
+            # Subgraph constraints
+            for k, (f_k, G_k, G_n_k) in subgraphs.items():
+                if not self.is_relax:
+                    for i in V:
+                        for j in V:
+                            for u in G_n_k:
+                                model.add_constraint(
+                                    e[i, j, k] >= x[i, u] + model.sum(
+                                        x[j, v] for v in G_n_k if (u, v) in G_k
+                                    ) - 1,
+                                    ctname=f"edge_link_{i}_{j}_{u}_{k}"
+                                )
 
             # Compute degree sequences
             degree_out = {}
@@ -264,14 +370,14 @@ class SFDSolver:
                 degree_in[v] = degree_in.get(v, 0) + 1
 
             # Flow conservation constraints
-            for i in range(n):
+            for i in V:
                 model.add_constraint(
-                    model.sum(e[i, j, k] for j in range(n)) ==
+                    model.sum(e[i, j, k] for j in V) ==
                     model.sum(x[i, u] * degree_out.get(u, 0) for u in set(u for u, v in G_k)),
                     ctname=f"flow_out_{i}_{k}"
                 )
                 model.add_constraint(
-                    model.sum(e[j, i, k] for j in range(n)) ==
+                    model.sum(e[j, i, k] for j in V) ==
                     model.sum(x[i, v] * degree_in.get(v, 0) for v in set(v for u, v in G_k)),
                     ctname=f"flow_in_{i}_{k}"
                 )
@@ -297,7 +403,7 @@ class SFDSolver:
         model.parameters.threads = self.threads
         model.parameters.mip.tolerances.mipgap = 0.0
         
-        return model, x
+        return model, x, e
 
     def solve(
         self,
@@ -321,12 +427,12 @@ class SFDSolver:
         start_time = time.time()
 
         # Create model
-        model, x = self._create_model(problem, subgraphs, fixed_variables, warmstart)
+        model, x, e = self._create_model(problem, subgraphs, fixed_variables, warmstart)
 
         # Register lazy callback if using cuts
         if self.use_cuts:
             cb = model.register_callback(SFDLazyCallback)
-            cb.initialize(x, problem)
+            cb.initialize(x, e, problem, subgraphs)
 
         # Solve
         solution = model.solve(log_output=self.log_output)
@@ -359,6 +465,67 @@ class SFDSolver:
                 lower_bound=model.solve_details.best_bound,
                 time=elapsed_time,
             )
+
+
+    def solve_instance(
+        self,
+        instance_path: str,
+        output_path: Optional[str] = None,
+        fixed_variables: Optional[List[Tuple[int, int]]] = None,
+        warmstart_path: Optional[str] = None,
+    ) -> Solution:
+        """
+        Solve a problem instance from file.
+
+        Args:
+            instance_path (str): Path to QAPLIB instance file
+            output_path (str, optional): Path to save result JSON
+            fixed_variables (list, optional): List of (i, u) to fix
+            warmstart_path (str, optional): Path to warmstart file (JSON dict)
+
+        Returns:
+            Solution: Solution object
+        """
+        # Load problem
+        if "QAPLIB" in instance_path:
+            problem = Problem.from_qaplib(instance_path)
+        else:
+            problem = Problem.from_full_instance(
+                matrix_file=instance_path,
+                workstations_file=instance_path.replace(".txt", "_workstations.txt"),
+                machines_file=instance_path.replace(".txt", "_machines.txt"),
+                fixed_file=instance_path.replace(".txt", "_fixed.txt")
+            )
+
+        # Load warm-start if provided
+        if warmstart_path is not None:
+            warmstart = read_warmstart(warmstart_path)
+        else:
+            warmstart = None
+        
+        # Decompose problem into subgraphs
+        if self.decomposition == "value_layer":
+            subgraphs = decompose_value_layer(problem)
+        elif self.decomposition == "value_only":
+            subgraphs = decompose_value_only(problem)
+        print(f"Decomposed into {len(subgraphs)} subgraphs using {self.decomposition} strategy.")
+        # Solve
+        solution = self.solve(
+            problem,
+            fixed_variables=fixed_variables,
+            warmstart=warmstart,
+            subgraphs=subgraphs
+        )
+
+        # Update instance name
+        solution.instance = Path(instance_path).stem
+
+        # Save result if output path provided
+        if output_path:
+            write_result(solution, output_path)
+
+        return solution
+
 
     def load_warmstart_from_file(self, filepath: str) -> Dict[Tuple[int, int], float]:
         """

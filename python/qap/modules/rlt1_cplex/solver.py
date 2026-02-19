@@ -84,25 +84,28 @@ class RLT1CPLEXSolver:
             tuple: (model, x_vars, y_vars)
         """
         n = problem.n
+        m = problem.m
         distances = problem.D
         flows = problem.F
+        M = list(range(m))
+        V = list(range(n))
 
         model = Model(name="QAP_RLT1")
 
         # Create variables
         if self.is_relax:
-            x = model.continuous_var_matrix(n, n, name="x", lb=0, ub=1)
+            x = model.continuous_var_matrix(n, m, name="x", lb=0, ub=1)
             
         else:
-            x = model.binary_var_matrix(n, n, name="x")
+            x = model.binary_var_matrix(n, m, name="x")
             
         y = model.continuous_var_dict(
             (
                 (i, u, j, v)
-                for i in range(n)
-                for u in range(n)
-                for j in range(n)
-                for v in range(n)
+                for i in V
+                for u in M
+                for j in V
+                for v in M
             ),
             name="y",
             lb=0,
@@ -113,46 +116,57 @@ class RLT1CPLEXSolver:
         model.minimize(
             model.sum(
                 distances[i, j] * flows[u, v] * y[i, u, j, v]
-                for i in range(n)
-                for j in range(n)
-                for u in range(n)
-                for v in range(n)
+                for i in V
+                for j in V
+                for u in M
+                for v in M
             )
         )
 
         # Assignment constraints
-        for i in range(n):
+        for i in V:
             model.add_constraint(
-                model.sum(x[i, u] for u in range(n)) == 1, ctname=f"assign_fac_{i}"
+                model.sum(x[i, u] for u in M) <= 1, ctname=f"assign_fac_{i}"
             )
-        for u in range(n):
+        for u in M:
             model.add_constraint(
-                model.sum(x[i, u] for i in range(n)) == 1,
+                model.sum(x[i, u] for i in V) == 1,
                 ctname=f"assign_loc_{u}",
             )
 
         # Linking constraints for y variables
-        for i in range(n):
-            for u in range(n):
-                for j in range(n):
+        for i in V:
+            for u in M:
+                for j in V:
                     # y[i,u,j,*] constraints
                     model.add_constraint(
-                        model.sum(y[i, u, j, v] for v in range(n)) == x[i, u],
+                        model.sum(y[i, u, j, v] for v in M) <= x[i, u],
                         ctname=f"link1_{i}_{u}_{j}",
                     )
-                    for v in range(n):
+                for v in M:
+                    # y[i,u,*,v] constraints
+                    model.add_constraint(
+                        model.sum(y[i, u, j, v] for j in V) == x[i, u],
+                        ctname=f"link2_{i}_{u}_{v}",
+                    )
+
+        for i in V:
+            for u in M:
+                for j in V:
+                    for v in M:
                         # Symmetry: y[i,u,j,v] == y[j,v,i,u]
                         model.add_constraint(
                             y[i, u, j, v] == y[j, v, i, u],
                             ctname=f"sym_{i}_{u}_{j}_{v}",
                         )
-                for v in range(n):
-                    # y[i,u,*,v] constraints
+                
+                for v in M:
+                    # Symmetry: y[i,u,j,v] == y[j,v,i,u]
                     model.add_constraint(
-                        model.sum(y[i, u, j, v] for j in range(n)) == x[i, u],
-                        ctname=f"link2_{i}_{u}_{v}",
+                        y[i, u, i, v] == y[i, v, i, u],
+                        ctname=f"sym_{i}_{u}_{i}_{v}",
                     )
-
+                        
         # Fix variables if provided
         if fixed_variables is not None:
             for i, u in fixed_variables:
@@ -279,7 +293,15 @@ class RLT1CPLEXSolver:
             Solution: Solution object
         """
         # Load problem
-        problem = Problem.from_qaplib(instance_path)
+        if "QAPLIB" in instance_path:
+            problem = Problem.from_qaplib(instance_path)
+        else:
+            problem = Problem.from_full_instance(
+                matrix_file=instance_path,
+                workstations_file=instance_path.replace(".txt", "_workstations.txt"),
+                machines_file=instance_path.replace(".txt", "_machines.txt"),
+                fixed_file=instance_path.replace(".txt", "_fixed.txt")
+            )
 
         # Load warm-start if provided
         if warmstart_path is not None:

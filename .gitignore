@@ -46,8 +46,8 @@ dist/
 
 # C++ executables (solver binaries in modules)
 cpp/modules/*/sfd_solver
-cpp/modules/*/rtl1_solver
-cpp/modules/*/rtl1_volume_solver
+cpp/modules/*/rlt1_solver
+cpp/modules/*/rlt1_volume_solver
 cpp/modules/*/*.out
 
 # Result and log files
