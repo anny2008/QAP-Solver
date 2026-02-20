@@ -37,23 +37,29 @@ class PricingEngine:
         rc = self.phi[(i, u, j, v)]
         # C1..C4 (coeff=+1 if row exists)
         if (i, j) in rmp.c1_map:
-            rc += rmp.get_row_dual(rmp.c1_map[(i, j)])
+            rc -= rmp.get_row_dual(rmp.c1_map[(i, j)])
+            if rmp.get_row_dual(rmp.c1_map[(i, j)]) > self.eps:
+                print(f"alpha {i}{j} dual={rmp.get_row_dual(rmp.c1_map[(i, j)])}")
         if (u, v) in rmp.c2_map:
             rc -= rmp.get_row_dual(rmp.c2_map[(u, v)])
         if (u, j) in rmp.c3_map:
-            rc += rmp.get_row_dual(rmp.c3_map[(u, j)])
+            rc -= rmp.get_row_dual(rmp.c3_map[(u, j)])
+            if rmp.get_row_dual(rmp.c3_map[(u, j)]) > self.eps:
+                print(f"gamma {u}{j} dual={rmp.get_row_dual(rmp.c3_map[(u, j)])}")
         if (i, v) in rmp.c4_map:
-            rc += rmp.get_row_dual(rmp.c4_map[(i, v)])
+            rc -= rmp.get_row_dual(rmp.c4_map[(i, v)])
+            if rmp.get_row_dual(rmp.c4_map[(i, v)]) > self.eps:
+                print(f"delta {i}{v} dual={rmp.get_row_dual(rmp.c4_map[(i, v)])}")
         if (i,u,j) in rmp.c5_map:
             rc -= rmp.get_row_dual(rmp.c5_map[(i,u,j)])
-        if (i,u,v) in rmp.c5_map:
-            rc -= rmp.get_row_dual(rmp.c5_map[(i,u,v)])
+        if (i,u,v) in rmp.c6_map:
+            rc -= rmp.get_row_dual(rmp.c6_map[(i,u,v)])
         # Symmetry C7: +1 on canonical, -1 on its mate
-        can = rmp._canonical(i, u, j, v)
-        if can in rmp.c7_map:
-            d = rmp.get_row_dual(rmp.c7_map[can])
-            sign = +1.0 if (i, u, j, v) == can else -1.0
-            rc -= d * sign
+        # can = rmp._canonical(i, u, j, v)
+        # if can in rmp.c7_map:
+        #     d = rmp.get_row_dual(rmp.c7_map[can])
+        #     sign = 1.0 if (i, u, j, v) == can else -1.0
+        #     rc -= d * sign
         return rc
 
     # ---------------------------
@@ -69,6 +75,7 @@ class PricingEngine:
         best_col = None
         best_rc = 0.0
         negative_cols = []
+        most_negative_columns = []
         fixed = self.fixed_assignments
         if not fixed:
             for i in self.V:
@@ -87,7 +94,10 @@ class PricingEngine:
                             if rc < best_rc:
                                 best_rc = rc
                                 best_col = idx
-            return best_col, best_rc, negative_cols
+                                most_negative_columns = [(idx, rc)]
+                            elif rc < best_rc + self.eps:
+                                most_negative_columns.append((idx, rc))
+            return best_col, best_rc, negative_cols, most_negative_columns
 
         for i in self.V:
             fixed_u = fixed.get(i)
@@ -107,8 +117,9 @@ class PricingEngine:
                         if rc < best_rc:
                             best_rc = rc
                             best_col = idx
+                            most_negative_columns = [(idx, rc)]
+                        elif rc < best_rc + self.eps:
+                            most_negative_columns.append((idx, rc))
                         if rc < -self.eps:
                             negative_cols.append((idx, rc))
-                            if len(negative_cols) >= 100:  # Stop after 100 negative columns
-                                return best_col, best_rc, negative_cols
-        return best_col, best_rc, negative_cols
+        return best_col, best_rc, negative_cols, most_negative_columns

@@ -80,40 +80,6 @@ class IncrementalRMP:
         self.x_index[key] = idx
         return idx
 
-    def _ensure_a(self, u, v):
-        key = (u, v)
-        if key in self.a_index:
-            return self.a_index[key]
-        name = f"a_{u}_{v}"
-        idx = self.cpx.variables.get_num()
-        self.cpx.variables.add(names=[name], lb=[0.0], ub=[1.0], obj=[self.bigM], types=["C"])
-        self.a_index[key] = idx
-        return idx
-
-    def _ensure_b(self, i, u, j):
-        key = (i, u, j)
-        if key in self.b_index:
-            return self.b_index[key]
-        name = f"b_{i}_{u}_{j}"
-        idx = self.cpx.variables.get_num()
-        self.cpx.variables.add(names=[name],
-                               lb=[0.0], ub=[cplex.infinity],
-                               obj=[self.bigM], types=["C"])
-        self.b_index[key] = idx
-        return idx
-
-    def _ensure_c(self, i, u, v):
-        key = (i, u, v)
-        if key in self.c_index:
-            return self.c_index[key]
-        name = f"c_{i}_{u}_{v}"
-        idx = self.cpx.variables.get_num()
-        self.cpx.variables.add(names=[name],
-                               lb=[0.0], ub=[cplex.infinity],
-                               obj=[self.bigM], types=["C"])
-        self.c_index[key] = idx
-        return idx
-
     # -----------------------------
     # Row creation
     # -----------------------------
@@ -152,30 +118,23 @@ class IncrementalRMP:
         return r
 
     def _ensure_c1(self, i, j, force=False): return self._ensure_row((i, j), 1.0, 'L', self.c1_map, force=force)
+    def _ensure_c2(self, u, v, force=False): return self._ensure_row((u, v), 1.0, 'E', self.c2_map, force=force)
     def _ensure_c3(self, u, j, force=False): return self._ensure_row((u, j), 1.0, 'L', self.c3_map, force=force)
     def _ensure_c4(self, i, v, force=False): return self._ensure_row((i, v), 1.0, 'L', self.c4_map, force=force)
 
-    def _ensure_c2(self, u, v, force=False):
-        """sum_v y_{i,u,j,v} - x_{i,u} + b_{i,u,j} = 0"""
-        r = self._ensure_row((u, v), 1.0, 'E', self.c2_map, force=force)
-        a_idx = self._ensure_a(u, v)
-        self.cpx.linear_constraints.set_coefficients([(r, a_idx, 1.0)])
-        return r
         
     def _ensure_c5(self, i, u, j, force=False):
         """sum_v y_{i,u,j,v} - x_{i,u} + b_{i,u,j} = 0"""
         r = self._ensure_row((i, u, j), 0.0, 'L', self.c5_map, force=force)
         x_idx = self._ensure_x(i, u)
-        b_idx = self._ensure_b(i, u, j)
-        self.cpx.linear_constraints.set_coefficients([(r, x_idx, -1.0), (r, b_idx, 1.0)])
+        self.cpx.linear_constraints.set_coefficients([(r, x_idx, -1.0)])
         return r
 
     def _ensure_c6(self, i, u, v, force=False):
         """sum_j y_{i,u,j,v} - x_{i,u} + c_{i,u,v} = 0"""
         r = self._ensure_row((i, u, v), 0.0, 'E', self.c6_map, force=force)
         x_idx = self._ensure_x(i, u)
-        c_idx = self._ensure_c(i, u, v)
-        self.cpx.linear_constraints.set_coefficients([(r, x_idx, -1.0), (r, c_idx, 1.0)])
+        self.cpx.linear_constraints.set_coefficients([(r, x_idx, -1.0)])
         return r
 
     # -----------------------------
@@ -258,6 +217,10 @@ class IncrementalRMP:
         )
         self.Omega.add(key)
         self.col_index[key] = idx
+        
+        # if y_jviu not in Omega, add also
+        if(j, v, i, u) not in self.Omega:
+            self.add_column(j, v, i, u, force=force)
 
         return idx
 
@@ -298,23 +261,22 @@ class IncrementalRMP:
         self.cpx.solve()
         return self.cpx.solution.get_status()
 
-    def get_y_values(self, positive_only=True):
+    def get_y_values(self):
         """Return dict {(i,u,j,v): value}; if positive_only, filter small values."""
+        if not self.col_index:
+            return {}
         sol = self.cpx.solution
-        vals = {}
-        for key, idx in self.col_index.items():
-            v = sol.get_values(idx)
-            if not positive_only or v > self.eps:
-                vals[key] = v
-        return vals
+        indices = list(self.col_index.values())
+        values = sol.get_values(indices)
+        return {key: values[i] for i, key in enumerate(self.col_index.keys()) if values[i] > self.eps}
     
     def get_x_values(self):
+        if not self.x_index:
+            return {}
         sol = self.cpx.solution
-        vals = {}
-        for key, idx in self.x_index.items():
-            vals[key] = sol.get_values(idx)
-        return vals
-    
+        indices = list(self.x_index.values())
+        values = sol.get_values(indices)
+        return {key: values[i] for i, key in enumerate(self.x_index.keys())}
     
     def get_row_dual(self, row_idx):
         """Safe dual getter for LP."""
@@ -355,3 +317,12 @@ class IncrementalRMP:
             num_c=len(self.c_index),
             num_c7=len(self.c7_map),
         )
+    def get_basis(self):
+        basis_cols, basis_rows = self.cpx.solution.basis.get_basis()
+        result = []
+        for i, status in enumerate(basis_cols):
+            if status == self.cpx.solution.basis.status.basic:
+                var_name = self.cpx.variables.get_names(i)
+                if var_name.startswith('y'):
+                    result.append(var_name)
+        return result
