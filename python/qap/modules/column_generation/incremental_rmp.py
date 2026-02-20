@@ -143,7 +143,7 @@ class IncrementalRMP:
     @staticmethod
     def _canonical(i, u, j, v):
         t, s = (i, u, j, v), (j, v, i, u)
-        return t if t <= s else s
+        return t if (i < j) else s
 
     # -----------------------------
     # Add symmetry row (C7)
@@ -176,54 +176,250 @@ class IncrementalRMP:
     # Add a y-variable (column)
     # -----------------------------
     def add_column(self, i, u, j, v, force=False):
-        """Add y(i,u,j,v) and attach all row coefficients (C1..C6). Also
-        post-creation, if C7 row exists, enforce ±1 coefficients for this y
-        and its mate (if present)."""
-        key = (i, u, j, v)
-        if key in self.col_index or key in self.Omega:
-            return self.col_index[key]
-
-        row_indices, row_values = [], []
-
-        # Base rows: C1..C6 (+1 each)
-        for f, args in [
-            (self._ensure_c1, (i, j, force)),
-            (self._ensure_c2, (u, v, force)),
-            (self._ensure_c3, (u, j, force)),
-            (self._ensure_c4, (i, v, force)),
-            (self._ensure_c5, (i, u, j, force)),
-            (self._ensure_c6, (i, u, v, force)),
-        ]:
-            r = f(*args)
-            row_indices.append(r)
-            row_values.append(1.0)
-
-        # If C7 row already exists, tentatively include it
+        """
+        Add a UNIQUE canonical y variable representing the unordered pair.
+        Attach coefficients for BOTH orientations (forward and reverse)
+        to preserve the original model where two directed variables existed.
+        Deduplicate row indices: if forward and reverse reference the same row
+        (e.g., i==j or u==v), the coefficient becomes 2.0 for that row.
+        """
         can = self._canonical(i, u, j, v)
-        if can in self.c7_map:
-            r = self.c7_map[can]
-            sign = 1.0 if key == can else -1.0
-            row_indices.append(r)
-            row_values.append(sign)
+        if can in self.col_index or can in self.Omega:
+            return self.col_index[can]
 
-        # Create y variable FIRST
-        name = f"y_{i}_{u}_{j}_{v}"
+        ci, cu, cj, cv = can
+        # Accumulate coefficients per row index to avoid duplicates
+        row_coeffs = {}
+        def add_row(ridx, coeff=1.0):
+            row_coeffs[ridx] = row_coeffs.get(ridx, 0.0) + coeff
+
+        # --- Forward orientation (ci,cu,cj,cv)
+
+        # --- Reverse orientation (cj,cv,ci,cu)
+        if ci != cj:
+            add_row(self._ensure_c1(ci, cj, force), 1.0)
+            add_row(self._ensure_c2(cu, cv, force), 1.0)
+            add_row(self._ensure_c3(cu, cj, force), 1.0)
+            add_row(self._ensure_c4(ci, cv, force), 1.0)
+            add_row(self._ensure_c5(ci, cu, cj, force), 1.0)
+            add_row(self._ensure_c6(ci, cu, cv, force), 1.0)
+            add_row(self._ensure_c1(cj, ci, force), 1.0)
+            add_row(self._ensure_c2(cv, cu, force), 1.0)
+            add_row(self._ensure_c3(cv, ci, force), 1.0)
+            add_row(self._ensure_c4(cj, cu, force), 1.0)
+            add_row(self._ensure_c5(cj, cv, ci, force), 1.0)
+            add_row(self._ensure_c6(cj, cv, cu, force), 1.0)
+        elif ci == cj and cu == cv:
+            # print(f"Warning: adding column with identical i,j and u,v: {(i,u,j,v)}; this should not happen if the canonical function is correct.")
+            add_row(self._ensure_c1(ci, cj, force), 1.0)
+            add_row(self._ensure_c2(cu, cv, force), 1.0)
+            add_row(self._ensure_c3(cu, cj, force), 1.0)
+            add_row(self._ensure_c4(ci, cv, force), 1.0)
+            add_row(self._ensure_c5(ci, cu, cj, force), 1.0)
+            add_row(self._ensure_c6(ci, cu, cv, force), 1.0)
+        # Flatten to lists
+        row_indices = list(row_coeffs.keys())
+        row_values = [row_coeffs[r] for r in row_indices]
+
+        # Create the canonical y variable
+        name = f"y_{ci}_{cu}_{cj}_{cv}"
         idx = self.cpx.variables.get_num()
+        obj = self.phi.get((ci, cu, cj, cv), 0.0) + self.phi.get((cj, cv, ci, cu), 0.0)
         self.cpx.variables.add(
             names=[name],
-            obj=[self.phi[key]],
+            obj=[obj],
             lb=[0.0], ub=[cplex.infinity],
-            columns=[SparsePair(row_indices, row_values)]
+            columns=[SparsePair(row_indices, row_values)],
+            types=["C"],
         )
-        self.Omega.add(key)
-        self.col_index[key] = idx
-        
-        # if y_jviu not in Omega, add also
-        if(j, v, i, u) not in self.Omega:
-            self.add_column(j, v, i, u, force=force)
-
+        self.Omega.add(can)
+        self.col_index[can] = idx
         return idx
+    
+    def check_row_correctness(self):
+        #  First check constraints c1..c6 for all existing columns
+        # For each row c1, get all columns with nonzero coeffs and verify they match the expected pattern
+        for (ci, cj), r in self.c1_map.items():
+            coeffs = self.cpx.linear_constraints.get_rows(r)
+            for idx, coeff in zip(coeffs.ind, coeffs.val):
+                if abs(coeff) > self.eps:
+                    var_name = self.cpx.variables.get_names(idx)
+                    if not var_name.startswith('y'):
+                        raise ValueError(f"Row c1({ci},{cj}) has non-y variable {var_name} with coeff {coeff}.")
+                    # Extract (ci,cu,cj,cv) from var_name
+                    _, i, u, j, v = var_name.split('_')
+                    i, u, j, v = int(i), int(u), int(j), int(v)
+                    si, su, sj, sv = j, v, i, u  # symmetric pair
+                    if not ((ci == i and cj == j) or (ci == si and cj == sj)):
+                        raise ValueError(f"Row c1({ci},{cj}) has variable {var_name} with coeff {coeff} that does not match expected pattern y(i,u,j,v).")
+            # check every y_ci_*_cj_* exists with nonzero coeff in this row
+            # and every y_cj_*_ci_* exists with nonzero coeff in this row
+            for u in self.M:
+                for v in self.M:
+                    var_name_1 = f"y_{ci}_{u}_{cj}_{v}"
+                    var_name_2 = f"y_{cj}_{v}_{ci}_{u}"
+                    idx_1 = self.col_index.get((ci, u, cj, v))
+                    idx_2 = self.col_index.get((cj, v, ci, u))
+                    can = self._canonical(ci, u, cj, v)
+                    if can in self.col_index:
+                        can_idx = self.col_index[can]
+                        coeff_1 = self.cpx.linear_constraints.get_coefficients(r, can_idx)
+                        if abs(coeff_1 - 1.0) > self.eps:
+                            raise ValueError(f"Row c1({ci},{cj}) is missing expected canonical column {var_name_1} with coeff 1.0, found coeff {coeff_1} instead.")
+        # C2: for each (u,v), check that all nonzero coeffs in
+                
+        for (cu, cv), r in self.c2_map.items():
+            coeffs = self.cpx.linear_constraints.get_rows(r)
+            for idx, coeff in zip(coeffs.ind, coeffs.val):
+                if abs(coeff) > self.eps:
+                    var_name = self.cpx.variables.get_names(idx)
+                    if not var_name.startswith('y'):
+                        raise ValueError(f"Row c2({cu},{cv}) has non-y variable {var_name} with coeff {coeff}.")
+                    _, i, u, j, v = var_name.split('_')
+                    i, u, j, v = int(i), int(u), int(j), int(v)
+                    si, su, sj, sv = j, v, i, u  # symmetric pair
+                    if not ((cu == u and cv == v) or (cu == su and cv == sv)):
+                        raise ValueError(f"Row c2({cu},{cv}) has variable {var_name} with coeff {coeff} that does not match expected pattern y(i,u,j,v).")
+            # check every y_*_cu_*_cv exists with nonzero coeff in this row
+            for i in self.V:
+                for j in self.V:
+                    var_name_1 = f"y_{i}_{cu}_{j}_{cv}"
+                    var_name_2 = f"y_{j}_{cv}_{i}_{cu}"
+                    idx_1 = self.col_index.get((i, cu, j, cv))
+                    idx_2 = self.col_index.get((j, cv, i, cu))
+                    can = self._canonical(i, cu, j, cv)
+                    if can in self.col_index:
+                        can_idx = self.col_index[can]
+                        coeff_1 = self.cpx.linear_constraints.get_coefficients(r, can_idx)
+                        if abs(coeff_1 - 1.0) > self.eps:
+                            raise ValueError(f"Row c2({cu},{cv}) is missing expected canonical column {var_name_1} with coeff 1.0, found coeff {coeff_1} instead.")
+        # C3: for each (u,j), check that all nonzero coeffs in row c3(u,j) correspond to columns y(i,u,j,v)
+        for (cu, cj), r in self.c3_map.items():
+            coeffs = self.cpx.linear_constraints.get_rows(r)
+            for idx, coeff in zip(coeffs.ind, coeffs.val):
+                if abs(coeff) > self.eps:
+                    var_name = self.cpx.variables.get_names(idx)
+                    if not var_name.startswith('y'):
+                        raise ValueError(f"Row c3({cu},{cj}) has non-y variable {var_name} with coeff {coeff}.")
+                    _, i, u, j, v = var_name.split('_')
+                    i, u, j, v = int(i), int(u), int(j), int(v)
+                    si, su, sj, sv = j, v, i, u  # symmetric pair
+                    if not ((cu == u and cj == j) or (cu == su and cj == sj)):
+                        raise ValueError(f"Row c3({cu},{cj}) has variable {var_name} with coeff {coeff} that does not match expected pattern y(i,u,j,v).")
+            # check every y_*_cu_*_cj exists with nonzero coeff in this row
+            for i in self.V:
+                for v in self.M:
+                    var_name_1 = f"y_{i}_{cu}_{cj}_{v}"
+                    var_name_2 = f"y_{cj}_{v}_{i}_{cu}"
+                    idx_1 = self.col_index.get((i, cu, cj, v))
+                    idx_2 = self.col_index.get((cj, v, i, cu))
+                    can = self._canonical(i, cu, cj, v)
+                    if can in self.col_index:
+                        can_idx = self.col_index[can]
+                        coeff_1 = self.cpx.linear_constraints.get_coefficients(r, can_idx)
+                        if abs(coeff_1 - 1.0) > self.eps:
+                            raise ValueError(f"Row c3({cu},{cj}) is missing expected canonical column {var_name_1} with coeff 1.0, found coeff {coeff_1} instead.")
+        # C4: for each (i,v), check that all nonzero coeffs in row c4(i,v) correspond to columns y(i,u,j,v)
+        for (ci, cv), r in self.c4_map.items():
+            coeffs = self.cpx.linear_constraints.get_rows(r)
+            for idx, coeff in zip(coeffs.ind, coeffs.val):
+                if abs(coeff) > self.eps:
+                    var_name = self.cpx.variables.get_names(idx)
+                    if not var_name.startswith('y'):
+                        raise ValueError(f"Row c4({ci},{cv}) has non-y variable {var_name} with coeff {coeff}.")
+                    _, i, u, j, v = var_name.split('_')
+                    i, u, j, v = int(i), int(u), int(j), int(v)
+                    si, su, sj, sv = j, v, i, u  # symmetric pair
+                    if not ((ci == i and cv == v) or (ci == si and cv == sv)):
+                        raise ValueError(f"Row c4({ci},{cv}) has variable {var_name} with coeff {coeff} that does not match expected pattern y(i,u,j,v).")
+            # check every y_ci_*_*_cv exists with nonzero coeff in this row
+            for u in self.M:
+                for j in self.V:
+                    var_name_1 = f"y_{ci}_{u}_{j}_{cv}"
+                    var_name_2 = f"y_{j}_{cv}_{ci}_{u}"
+                    idx_1 = self.col_index.get((ci, u, j, cv))
+                    idx_2 = self.col_index.get((j, cv, ci, u))
+                    can = self._canonical(ci, u, j, cv)
+                    if can in self.col_index:
+                        can_idx = self.col_index[can]
+                        coeff_1 = self.cpx.linear_constraints.get_coefficients(r, can_idx)
+                        if abs(coeff_1 - 1.0) > self.eps:
+                            raise ValueError(f"Row c4({ci},{cv}) is missing expected canonical column {var_name_1} with coeff 1.0, found coeff {coeff_1} instead.")
+        # C5: for each (i,u,j), check that all nonzero coeffs in row c5(i,u,j) correspond to columns y(i,u,j,v) and x(i,u) and b(i,u,j)
+        for (ci, cu, cj), r in self.c5_map.items():
+            coeffs = self.cpx.linear_constraints.get_rows(r)
+            for idx, coeff in zip(coeffs.ind, coeffs.val):
+                if abs(coeff) > self.eps:
+                    var_name = self.cpx.variables.get_names(idx)
+                    if var_name.startswith('y'):
+                        _, i, u, j, v = var_name.split('_')
+                        i, u, j, v = int(i), int(u), int(j), int(v)
+                        si, su, sj, sv = j, v, i, u  # symmetric pair
+                        if not ((ci == i and cu == u and cj == j) or (ci == si and cu == su and cj == sj)):
+                            raise ValueError(f"Row c5({ci},{cu},{cj}) has variable {var_name} with coeff {coeff} that does not match expected pattern y(i,u,j,v).")
+                    elif var_name.startswith('x'):
+                        _, xi, xu = var_name.split('_')
+                        xi, xu = int(xi), int(xu)
+                        if not (xi == ci and xu == cu):
+                            raise ValueError(f"Row c5({ci},{cu},{cj}) has variable {var_name} with coeff {coeff} that does not match expected pattern x(i,u).")
+                    elif var_name.startswith('b'):
+                        _, bi, bu, bj = var_name.split('_')
+                        bi, bu, bj = int(bi), int(bu), int(bj)
+                        if not (bi == ci and bu == cu and bj == cj):
 
+                            raise ValueError(f"Row c5({ci},{cu},{cj}) has variable {var_name} with coeff {coeff} that does not match expected pattern b(i,u,j).")
+                    else:
+                        raise ValueError(f"Row c5({ci},{cu},{cj}) has non-y/x/b variable {var_name} with coeff {coeff}.")
+            # check every y_ci_cu_cj_* exists with nonzero coeff in this row
+            for v in self.M:
+                var_name_1 = f"y_{ci}_{cu}_{cj}_{v}"
+                var_name_2 = f"y_{cj}_{v}_{ci}_{cu}"
+                idx_1 = self.col_index.get((ci, cu, cj, v))
+                idx_2 = self.col_index.get((cj, v, ci, cu))
+                can = self._canonical(ci, cu, cj, v)
+                if can in self.col_index:
+                    can_idx = self.col_index[can]
+                    coeff_1 = self.cpx.linear_constraints.get_coefficients(r, can_idx)
+                    if abs(coeff_1 - 1.0) > self.eps:
+                        raise ValueError(f"Row c5({ci},{cu},{cj}) is missing expected canonical column {var_name_1} with coeff 1.0, found coeff {coeff_1} instead.")
+        # C6: for each (i,u,v), check that all nonzero coeffs in row c6(i,u,v) correspond to columns y(i,u,j,v) and x(i,u) and c(i,u,v)
+        for (ci, cu, cv), r in self.c6_map.items():
+            coeffs = self.cpx.linear_constraints.get_rows(r)
+            for idx, coeff in zip(coeffs.ind, coeffs.val):
+                if abs(coeff) > self.eps:
+                    var_name = self.cpx.variables.get_names(idx)
+                    if var_name.startswith('y'):
+                        _, i, u, j, v = var_name.split('_')
+                        i, u, j, v = int(i), int(u), int(j), int(v)
+                        si, su, sj, sv = j, v, i, u  # symmetric pair
+                        if not ((ci == i and cu == u and cv == v) or (ci == si and cu == su and cv == sv)):
+                            raise ValueError(f"Row c6({ci},{cu},{cv}) has variable {var_name} with coeff {coeff} that does not match expected pattern y(i,u,j,v).")
+                    elif var_name.startswith('x'):
+                        _, xi, xu = var_name.split('_')
+                        xi, xu = int(xi), int(xu)
+                        if not (xi == ci and xu == cu):
+                            raise ValueError(f"Row c6({ci},{cu},{cv}) has variable {var_name} with coeff {coeff} that does not match expected pattern x(i,u).")
+                    elif var_name.startswith('c'):
+                        _, ci, cu, cvv = var_name.split('_')
+                        ci, cu, cvv = int(ci), int(cu), int(cvv)
+                        if not (ci == ci and cu == cu and cvv == cv):
+                            raise ValueError(f"Row c6({ci},{cu},{cv}) has variable {var_name} with coeff {coeff} that does not match expected pattern c(i,u,v).")
+                    else:
+                        raise ValueError(f"Row c6({ci},{cu},{cv}) has non-y/x/c variable {var_name} with coeff {coeff}.")
+            # check every y_ci_cu_*_cv exists with nonzero coeff in this row
+            for j in self.V:
+                var_name_1 = f"y_{ci}_{cu}_{j}_{cv}"
+                var_name_2 = f"y_{j}_{cv}_{ci}_{cu}"
+                idx_1 = self.col_index.get((ci, cu, j, cv))
+                idx_2 = self.col_index.get((j, cv, ci, cu))
+                can = self._canonical(ci, cu, j, cv)
+                if can in self.col_index:
+                    can_idx = self.col_index[can]
+                    coeff_1 = self.cpx.linear_constraints.get_coefficients(r, can_idx)
+                    if abs(coeff_1 - 1.0) > self.eps:
+                        raise ValueError(f"Row c6({ci},{cu},{cv}) is missing expected canonical column {var_name_1} with coeff 1.0, found coeff {coeff_1} instead.")
+        print("Row correctness check passed: all rows have the expected variables and coefficients.")
+        
     def fix_x_assignments(self, fixed_assignments):
         if not fixed_assignments:
             return

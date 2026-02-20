@@ -34,32 +34,26 @@ class PricingEngine:
     # Reduced cost for candidate y(i,u,j,v)
     # ---------------------------
     def reduced_cost(self, rmp, i, u, j, v):
-        rc = self.phi[(i, u, j, v)]
+        rc = self.phi[(i, u, j, v)] + self.phi[j,v,i,u]
         # C1..C4 (coeff=+1 if row exists)
-        if (i, j) in rmp.c1_map:
-            rc -= rmp.get_row_dual(rmp.c1_map[(i, j)])
-            if rmp.get_row_dual(rmp.c1_map[(i, j)]) > self.eps:
-                print(f"alpha {i}{j} dual={rmp.get_row_dual(rmp.c1_map[(i, j)])}")
-        if (u, v) in rmp.c2_map:
-            rc -= rmp.get_row_dual(rmp.c2_map[(u, v)])
-        if (u, j) in rmp.c3_map:
-            rc -= rmp.get_row_dual(rmp.c3_map[(u, j)])
-            if rmp.get_row_dual(rmp.c3_map[(u, j)]) > self.eps:
-                print(f"gamma {u}{j} dual={rmp.get_row_dual(rmp.c3_map[(u, j)])}")
-        if (i, v) in rmp.c4_map:
-            rc -= rmp.get_row_dual(rmp.c4_map[(i, v)])
-            if rmp.get_row_dual(rmp.c4_map[(i, v)]) > self.eps:
-                print(f"delta {i}{v} dual={rmp.get_row_dual(rmp.c4_map[(i, v)])}")
-        if (i,u,j) in rmp.c5_map:
-            rc -= rmp.get_row_dual(rmp.c5_map[(i,u,j)])
-        if (i,u,v) in rmp.c6_map:
-            rc -= rmp.get_row_dual(rmp.c6_map[(i,u,v)])
-        # Symmetry C7: +1 on canonical, -1 on its mate
-        # can = rmp._canonical(i, u, j, v)
-        # if can in rmp.c7_map:
-        #     d = rmp.get_row_dual(rmp.c7_map[can])
-        #     sign = 1.0 if (i, u, j, v) == can else -1.0
-        #     rc -= d * sign
+        rc -= rmp.get_row_dual(rmp.c1_map[(i, j)])
+        if i != j:
+            rc -= rmp.get_row_dual(rmp.c1_map[(j, i)])
+        rc -= rmp.get_row_dual(rmp.c2_map[(u, v)])
+        if u != v:
+            rc -= rmp.get_row_dual(rmp.c2_map[(v, u)])
+        rc -= rmp.get_row_dual(rmp.c3_map[(u, j)])
+        if (v, i) != (u, j):
+            rc -= rmp.get_row_dual(rmp.c3_map[(v, i)])
+        rc -= rmp.get_row_dual(rmp.c4_map[(i, v)])
+        if (j, u) != (i, v):
+            rc -= rmp.get_row_dual(rmp.c4_map[(j, u)])
+        rc -= rmp.get_row_dual(rmp.c5_map[(i,u,j)])
+        if (j,v,i) != (i,u,j):
+            rc -= rmp.get_row_dual(rmp.c5_map[(j,v,i)])
+        rc -= rmp.get_row_dual(rmp.c6_map[(i,u,v)])
+        if (j,v,u) != (i,u,v):
+            rc -= rmp.get_row_dual(rmp.c6_map[(j,v,u)])
         return rc
 
     # ---------------------------
@@ -85,7 +79,7 @@ class PricingEngine:
                             # Skip structurally invalid pairs
                             if (i == j and u != v) or (i != j and u == v):
                                 continue
-                            idx = (i, u, j, v)
+                            idx = rmp._canonical(i, u, j, v)
                             if idx in rmp.Omega:
                                 continue
                             rc = self.reduced_cost(rmp, i, u, j, v)
@@ -110,7 +104,7 @@ class PricingEngine:
                         # Skip structurally invalid pairs
                         if (i == j and u != v) or (i != j and u == v):
                             continue
-                        idx = (i, u, j, v)
+                        idx = rmp._canonical(i, u, j, v)
                         if idx in rmp.Omega:
                             continue
                         rc = self.reduced_cost(rmp, i, u, j, v)

@@ -60,25 +60,25 @@ class ColumnGenerationCPLEXSolver:
         phi = {(i,u,j,v): float(D[i][j]) * float(F[u][v]) for i in V for u in M for j in V for v in M}
 
         # Build initial Ω
-        # Omega0 = self._build_initial_Omega(V, M, D, F, fixed_assignments)
+        Omega0 = self._build_initial_Omega(V, M, D, F, fixed_assignments)
         # Load Omega0 from file if exists (for warm start)
-        omega_file = f"basis_cols_{problem.instance_name}.txt"
-        if Path(omega_file).exists():
-            print(f"Loading initial Omega from {omega_file}...")
-            Omega0 = set()
-            with open(omega_file, "r") as f:
-                for line in f:
-                    if line.startswith('y'): # y_i_u_j_v
-                        (i, u, j, v) = map(int, line.strip()[2:].split('_'))
-                        Omega0.add((i, u, j, v))
-            print(f"Initial Omega size: {len(Omega0)}")
-        else:            
-            print(f"Building initial Omega...")
-            Omega0 = self._build_initial_Omega(V, M, D, F, fixed_assignments)
-            with open(omega_file, "w") as f:
-                for (i,u,j,v) in Omega0:
-                    f.write(f"{i},{u},{j},{v}\n")
-            print(f"Initial Omega size: {len(Omega0)}")
+        # omega_file = f"basis_cols_{problem.instance_name}.txt"
+        # if Path(omega_file).exists():
+        #     print(f"Loading initial Omega from {omega_file}...")
+        #     Omega0 = set()
+        #     with open(omega_file, "r") as f:
+        #         for line in f:
+        #             if line.startswith('y'): # y_i_u_j_v
+        #                 (i, u, j, v) = map(int, line.strip()[2:].split('_'))
+        #                 Omega0.add((i, u, j, v))
+        #     print(f"Initial Omega size: {len(Omega0)}")
+        # else:            
+        #     print(f"Building initial Omega...")
+        #     Omega0 = self._build_initial_Omega(V, M, D, F, fixed_assignments)
+        #     with open(omega_file, "w") as f:
+        #         for (i,u,j,v) in Omega0:
+        #             f.write(f"{i},{u},{j},{v}\n")
+        #     print(f"Initial Omega size: {len(Omega0)}")
 
         # Instantiate RMP
         rmp = IncrementalRMP(V, M, phi, bigM=self.bigM)
@@ -89,6 +89,7 @@ class ColumnGenerationCPLEXSolver:
         for (i, u, j, v) in Omega0:
             rmp.add_column(i, u, j, v, force=False)  # force=True to create all base rows for these columns
         
+        rmp.check_row_correctness()
 
         # Engines
         pricing = PricingEngine(
@@ -116,6 +117,9 @@ class ColumnGenerationCPLEXSolver:
             if self.log_output:
                 print(f"RMP solved with status {status} in {time.time()-t0:.2f}s")
             if status == 3:  # Infeasible
+                if iteration > 1:
+                    print(f"RMP is infeasible at iteration {iteration}, which should not happen. Terminating.")
+                    break
                 print(f"RMP is infeasible, adding warmstart columns and retrying...")
                 if warmstart is not None:
                     for (i, u) in warmstart:
@@ -141,28 +145,24 @@ class ColumnGenerationCPLEXSolver:
                                 rmp.add_column(i, u, j, v, force=True)
                             else:
                                 print(f"Skipping column (i={i}, u={u}, j={j}, v={v}) due to fixed assignment conflict")
+                continue  # retry solving RMP after adding warmstart columns
                 
                 
 
-            # Current solution snapshot
-            t0 = time.time()
-            y_vals = rmp.get_y_values()
-            print(f" -Retrieved RMP solution in {time.time()-t0:.2f}s; number of positive columns = {len(y_vals)}")
-            
             # obj_val = sum(phi[k] * y_vals.get(k, 0.0) for k in rmp.Omega)
             added = False
 
-            # 1) Symmetry separation (hard)
-            t0 = time.time()
-            new_cuts, new_cols = separation.separate_symmetry(rmp, y_vals)
-            if self.log_output:
-                print(f" -Symmetry separation took {time.time()-t0:.2f}s; added cuts={len(new_cuts)}, cols={len(new_cols)}")
-            if new_cuts or new_cols:
-                added = True
-                if self.log_output:
-                    print(f"  Added {len(new_cuts)} symmetry cuts and {len(new_cols)} columns")
-                # re-solve next loop iteration
-                continue
+            # # 1) Symmetry separation (hard)
+            # t0 = time.time()
+            # new_cuts, new_cols = separation.separate_symmetry(rmp, y_vals)
+            # if self.log_output:
+            #     print(f" -Symmetry separation took {time.time()-t0:.2f}s; added cuts={len(new_cuts)}, cols={len(new_cols)}")
+            # if new_cuts or new_cols:
+            #     added = True
+            #     if self.log_output:
+            #         print(f"  Added {len(new_cuts)} symmetry cuts and {len(new_cols)} columns")
+            #     # re-solve next loop iteration
+            #     continue
             
             if self.log_output:
                 print('-' * 40)
@@ -252,56 +252,54 @@ class ColumnGenerationCPLEXSolver:
             if abs(sum_u - 1.0) > self.eps:
                 print(f"Warning: x variables for facility {u} sum to {sum_u:.6f} (should be 1.0)")
 
+        # Current solution snapshot
+        t0 = time.time()
+        y_vals = rmp.get_y_values()
+        print(f" -Retrieved RMP solution in {time.time()-t0:.2f}s; number of positive columns = {len(y_vals)}")
+            
         # Check if solution is valid
         # C1
         for i in V:
             for j in V:
                 if i != j:
-                    s = sum(y_vals.get((i,u,j,v), 0.0) for u in M for v in M)
+                    s = sum(y_vals.get(rmp._canonical(i,u,j,v), 0.0) for u in M for v in M)
                     if s > 1.0 + self.eps:
                         print(f"Warning: C1 violated for (i={i}, j={j}), sum={s:.6f}")
         # C2
         for u in M:
             for v in M:
                 if u != v:
-                    s = sum(y_vals.get((i,u,j,v), 0.0) for i in V for j in V)
+                    s = sum(y_vals.get(rmp._canonical(i,u,j,v), 0.0) for i in V for j in V)
                     if s > 1.0 + self.eps:
                         print(f"Warning: C2 violated for (u={u}, v={v}), sum={s:.6f}")
         # C3
         for u in M:
             for j in V:
-                s = sum(y_vals.get((i,u,j,v), 0.0) for i in V for v in M)
+                s = sum(y_vals.get(rmp._canonical(i,u,j,v), 0.0) for i in V for v in M)
                 if s > 1.0 + self.eps:
                     print(f"Warning: C3 violated for (u={u}, j={j}), sum={s:.6f}")
         # C4
         for i in V:
             for v in M:
-                s = sum(y_vals.get((i,u,j,v), 0.0) for u in M for j in V)
+                s = sum(y_vals.get(rmp._canonical(i,u,j,v), 0.0) for u in M for j in V)
                 if s > 1.0 + self.eps:
                     print(f"Warning: C4 violated for (i={i}, v={v}), sum={s:.6f}")
         # C5
         for i in V:
             for u in M:
                 for j in V:
-                    s = sum(y_vals.get((i,u,j,v), 0.0) for v in M) - x_vals.get((i,u), 0.0)
+                    s = sum(y_vals.get(rmp._canonical(i,u,j,v), 0.0) for v in M) - x_vals.get((i,u), 0.0)
                     if abs(s) > self.eps:
-                        print(f"Warning: C5 violated for (i={i}, u={u}, j={j}), sum_v y - x = {s:.6f}")
+                        print(f"Warning: C5 violated for (i={i}, u={u}, j={j}), sum_v y - x = {s:.6f} ")
                         return None
         # C6
         for i in V:
             for u in M:
                 for v in M:
-                    s = sum(y_vals.get((i,u,j,v), 0.0) for j in V) - x_vals.get((i,u), 0.0)
+                    s = sum(y_vals.get(rmp._canonical(i,u,j,v), 0.0) for j in V) - x_vals.get((i,u), 0.0)
                     if abs(s) > self.eps:
                         print(f"Warning: C6 violated for (i={i}, u={u}, v={v}), sum_j y - x = {s:.6f}")
                         return None
-        # C7
-        for (i,u,j,v), val in y_vals.items():
-            sym = (j,v,i,u)
-            val_sym = y_vals.get(sym, 0.0)
-            if abs(val - val_sym) > self.eps:
-                print(f"Warning: C7 violated for (i={i}, u={u}, j={j}, v={v}), y={val:.6f} vs y_sym={val_sym:.6f}")
-                return None
         
         basis_cols = rmp.get_basis()
         print(f"Basis columns: {len(basis_cols)}, number of columns in RMP: {len(rmp.Omega)}, number of rows: {len(rmp.c_index)}, number of C7 cuts: {len(rmp.c7_map)}")
