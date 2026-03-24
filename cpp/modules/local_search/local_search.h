@@ -300,13 +300,7 @@ public:
      * Compute QAP objective value for a permutation.
      */
     static double computeObjective(const Problem& problem, const std::vector<int>& perm) {
-        double obj = 0.0;
-        for (int i = 0; i < problem.n; ++i) {
-            for (int j = 0; j < problem.n; ++j) {
-                obj += problem.F[i][j] * problem.D[perm[i]][perm[j]];
-            }
-        }
-        return obj;
+        return problem.evaluate(perm);
     }
 };
 

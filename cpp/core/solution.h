@@ -15,7 +15,7 @@ class Solution {
 public:
     std::string instance;                    // Instance name
     std::string solver;                      // Solver identifier
-    std::vector<int> assignment;             // Permutation
+    std::vector<int> assignment;             // Permutation π where π[i] = u means facility u → location i
     double objective = -1.0;                 // Objective value (-1 = not set)
     double lower_bound = -1.0;               // Lower bound (-1 = not set)
     double time = 0.0;                       // Execution time
