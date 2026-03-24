@@ -1,10 +1,10 @@
 """
-RLT1 CPLEX Solver Module
+M5 CPLEX Solver Module
 
-Relaxation-based Tightened Linear (RLT1) formulation solved with CPLEX.
+Relaxation-based Tightened Linear (M5) formulation solved with CPLEX.
 Supports binary variables, relaxed 0-1 variables, and warm-start solutions.
 
-Reference: Based on solve_QAP_RLT1_cplex from qap_new_formulation.py
+Reference: Based on solve_QAP_M5_cplex from qap_new_formulation.py
 """
 
 import time
@@ -24,8 +24,8 @@ from qap.core.io import write_result
 from qap.core.solution_io import read_warmstart
 
 
-class RLT1CPLEXSolver:
-    """RLT1 formulation solver using CPLEX."""
+class M5CPLEXSolver:
+    """M5 formulation solver using CPLEX."""
 
     def __init__(self, config: Dict[str, Any]):
         """
@@ -44,8 +44,8 @@ class RLT1CPLEXSolver:
         self.config = config
         self.instance_path = config.get("instance", "")
         self.instance = Path(self.instance_path).stem if self.instance_path else "unknown"
-        self.solver_name = config.get("solver", "rlt1_cplex")
-        self.formulation = config.get("formulation", "rlt1")
+        self.solver_name = config.get("solver", "m5_cplex")
+        self.formulation = config.get("formulation", "m5")
         self.is_relax = config.get("is_relax", False)
         self.time_limit = config.get("time_limit", 120)
         self.threads = config.get("threads", 8)
@@ -53,10 +53,10 @@ class RLT1CPLEXSolver:
         self.preprocessing_symmetry = config.get("preprocessing_symmetry", 5)
 
         # Validate config
-        assert self.formulation == "rlt1", "RLT1 solver requires formulation='rlt1'"
+        assert self.formulation == "m5", "M5 solver requires formulation='m5'"
 
     @classmethod
-    def from_config_file(cls, config_path: str) -> "RLT1CPLEXSolver":
+    def from_config_file(cls, config_path: str) -> "M5CPLEXSolver":
         """
         Create solver from config file.
 
@@ -64,7 +64,7 @@ class RLT1CPLEXSolver:
             config_path (str): Path to config JSON file
 
         Returns:
-            RLT1CPLEXSolver: Initialized solver
+            M5CPLEXSolver: Initialized solver
         """
         with open(config_path, "r") as f:
             config = json.load(f)
@@ -74,7 +74,7 @@ class RLT1CPLEXSolver:
         self, problem: Problem, fixed_variables: Optional[List[Tuple[int, int]]] = None
     ) -> Tuple[Model, Dict, Dict]:
         """
-        Create CPLEX model for RLT1 formulation.
+        Create CPLEX model for M5 formulation.
 
         Args:
             problem (Problem): QAP problem instance
@@ -85,30 +85,44 @@ class RLT1CPLEXSolver:
         """
         n = problem.n
         m = problem.m
+        V = list(range(n))
+        M = list(range(m))
         distances = problem.D
         flows = problem.F
-        M = list(range(m))
-        V = list(range(n))
 
-        model = Model(name="QAP_RLT1")
+        model = Model(name="QAP_M5")
 
         # Create variables
         if self.is_relax:
-            x = model.continuous_var_matrix(n, m, name="x", lb=0, ub=1)
-            
+            y = model.continuous_var_dict(
+                (
+                    (i, u, j, v)
+                    for i in V
+                    for u in M
+                    for j in V
+                    for v in M
+                    if (i < j and u != v)
+                ),
+                name="y",
+                lb=0,
+                ub=1,
+            )
         else:
-            x = model.binary_var_matrix(n, m, name="x")
+            y = model.binary_var_dict(
+                (
+                    (i, u, j, v)
+                    for i in V
+                    for u in M
+                    for j in V
+                    for v in M
+                    if (i < j and u != v)
+                ),
+                name="y",
+            )
             
-        y = model.continuous_var_dict(
-            (
-                (i, u, j, v)
-                for i in V
-                for u in M
-                for j in V
-                for v in M
-                if i < j or (i == j and u == v)
-            ),
-            name="y",
+        x = model.continuous_var_dict(
+            ((i, u) for i in V for u in M),
+            name="x",
             lb=0,
             ub=1,
         )
@@ -116,52 +130,110 @@ class RLT1CPLEXSolver:
         # Objective function
         model.minimize(
             model.sum(
-                distances[i, j] * flows[u, v] * (  y[i, u, j, v] if (i, u, j, v) in y else y[j, v, i, u] if (j, v, i, u) in y else 0 )
+                (distances[i, j] * flows[u, v]) * ( y[i, u, j, v] if (i, u, j, v) in y else y[j, v, i, u] if (j, v, i, u) in y else 0 )
                 for i in V
                 for j in V
                 for u in M
                 for v in M
             )
         )
-
-        # Assignment constraints
+        # sum_uv y_iujv <= 1 for all i,j, i < j
         for i in V:
-            model.add_constraint(
-                model.sum(x[i, u] for u in M) <= 1, ctname=f"assign_fac_{i}"
-            )
+            for j in V:
+                if i < j:
+                    model.add_constraint(
+                        model.sum(y[i, u, j, v] for u in M for v in M if u != v) <= 1,
+                        ctname=f"assign_ij_{i}_{j}",
+                    )
+                
+        # sum_ij, i< j (y_iujv + y_ivju) == 1 for all u,v, u < v
         for u in M:
-            model.add_constraint(
-                model.sum(x[i, u] for i in V) == 1,
-                ctname=f"assign_loc_{u}",
-            )
-
-        # Linking constraints for y variables
+            for v in M:
+                if u < v:
+                    model.add_constraint(
+                        model.sum(
+                            (y[i, u, j, v] + y[i, v, j, u])
+                            for i in V
+                            for j in V
+                            if i < j
+                        )
+                        == 1,
+                        ctname=f"assign_uv_{u}_{v}",
+                    )
+                    
+        # sum_{i,v, i< j, v != u}  y_iujv + sum_{i,v, i > j, v != u} y_jviu <= 1 for all u,j
+        for u in M:
+            for j in V:
+                model.add_constraint(
+                    model.sum(
+                        y[i, u, j, v] for i in V for v in M if i < j and v != u
+                    )
+                    + model.sum(
+                        y[j, v, i, u] for i in V for v in M if i > j and v != u
+                    )
+                    <= 1,
+                    ctname=f"assign_ju_{j}_{u}",
+                )
+        
+        # # sum_{j: j > i, v: v != u} y_iujv <= x_iu for all i,u
+        # for i in V:
+        #     for u in M:
+        #         j_set = [j for j in V if j > i]
+        #         model.add_constraint(
+        #             model.sum(y[i, u, j, v] for j in j_set for v in M if v != u) <= len(j_set)*x[i, u],
+        #             ctname=f"link_iu_{i}_{u}",
+        #         )
+                
+        # # sum_{j: j < i, v: v != u} y_juiv == x_iu for all i,u
+        # for i in V:
+        #     for u in M:
+        #         j_set = [j for j in V if j < i]
+        #         model.add_constraint(
+        #             model.sum(y[j, v, i, u] for j in j_set for v in M if v != u) <= len(j_set)*x[i, u],
+        #             ctname=f"link_iu_eq_{i}_{u}",
+        #         )
+                
+        # sum_{v} y_iujv <= x_iu for all i,u,j: i < j
         for i in V:
             for u in M:
                 for j in V:
-                    # y[i,u,j,*] constraints
-                    model.add_constraint(
-                        model.sum(y[i, u, j, v] if (i, u, j, v) in y else y[j, v, i, u] if (j, v, i, u) in y else 0 for v in M) <= x[i, u],
-                        ctname=f"link1_{i}_{u}_{j}",
-                    )
+                    if j > i:
+                        model.add_constraint(
+                            model.sum(y[i, u, j, v] for v in M if v != u) <= x[i, u],
+                            ctname=f"link_iu_j_{i}_{u}_{j}",
+                        )
+                    elif i > j:
+                        model.add_constraint(
+                            model.sum(y[j, v, i, u] for v in M if v != u) <= x[i, u],
+                            ctname=f"link_iu_j_{i}_{u}_{j}",
+                        )
+                        
+        # sum_{j: i < j} y_iujv + sum_{j: j < i} y_juiv == x_iu for all i,u,v: u != v
+        for i in V:
+            for u in M:
                 for v in M:
-                    # y[i,u,*,v] constraints
-                    model.add_constraint(
-                        model.sum(y[i, u, j, v] if (i, u, j, v) in y else y[j, v, i, u] if (j, v, i, u) in y else 0 for j in V) == x[i, u],
-                        ctname=f"link2_{i}_{u}_{v}",
-                    )
-
-        # Fix variables if provided
-        if fixed_variables is not None:
-            for i, u in fixed_variables:
+                    if u != v:
+                        model.add_constraint(
+                            model.sum(y[i, u, j, v] for j in V if j > i) 
+                            + model.sum(y[j, v, i, u] for j in V if j < i) == x[i, u],
+                            ctname=f"link_iu_v_{i}_{u}_{v}",
+                        ) 
+                
+        # # Fix variables if provided
+        # if fixed_variables is not None:
+        #     for i, u in fixed_variables:
+        #         model.add_constraint(x[i, u] == 1, ctname=f"fix_x_{i}_{u}")
+        
+        if hasattr(problem, "fixed_assignments") and problem.fixed_assignments is not None:
+            print(f"Adding {len(problem.fixed_assignments)} fixed assignment constraints from problem instance")
+            # print(problem.fixed_assignments)
+            for i,u in problem.fixed_assignments.items():
                 model.add_constraint(x[i, u] == 1, ctname=f"fix_x_{i}_{u}")
 
         # Configure solver parameters
-        model.parameters.timelimit = self.time_limit
-        model.parameters.threads = self.threads
-        model.parameters.preprocessing.symmetry = self.preprocessing_symmetry
+        model.parameters.lpmethod = 2  # Use dual simplex
 
-        return model, x, y
+        return model, y, x
 
     def solve(
         self,
@@ -170,7 +242,7 @@ class RLT1CPLEXSolver:
         warmstart: Optional[Dict[Tuple[int, int], float]] = None,
     ) -> Solution:
         """
-        Solve the QAP problem using RLT1 formulation.
+        Solve the QAP problem using M5 formulation.
 
         Args:
             problem (Problem): QAP problem instance
@@ -183,7 +255,7 @@ class RLT1CPLEXSolver:
         start_time = time.time()
 
         # Create model
-        model, x, y = self._create_model(problem, fixed_variables)
+        model, y, x = self._create_model(problem, fixed_variables)
 
         # Add warm-start if provided
         # docplex's add_mip_start requires a SolveSolution object
@@ -191,10 +263,11 @@ class RLT1CPLEXSolver:
             # Create a SolveSolution object for warm-start
             ws_solution = model.new_solution()
             for (i, u), value in warmstart.items():
-                ws_solution.add_var_value(x[i, u], value)
                 # Set y variables: y[i,u,j,v] = 1 if both x[i,u]=1 and x[j,v]=1
+                ws_solution.add_var_value(x[i,u], value)
                 for (j, v), value2 in warmstart.items():
-                    ws_solution.add_var_value(y[i, u, j, v] if (i, u, j, v) in y else y[j, v, i, u] if (j, v, i, u) in y else 0, value*value2)
+                    if (i,u,j,v) in y:
+                        ws_solution.add_var_value(y[i, u, j, v], value*value2)
             # Add MIP start using the solution object
             model.add_mip_start(ws_solution)
 
@@ -231,6 +304,7 @@ class RLT1CPLEXSolver:
             else:
                 # Can't evaluate non-integer solution
                 actual_objective = solution.get_objective_value()
+            print(f"CPLEX Objective: {solution.get_objective_value()}")
             
             # Create solution object
             result = Solution(
@@ -286,6 +360,7 @@ class RLT1CPLEXSolver:
                 machines_file=instance_path.replace(".txt", "_machines.txt"),
                 fixed_file=instance_path.replace(".txt", "_fixed.txt")
             )
+
 
         # Load warm-start if provided
         if warmstart_path is not None:
@@ -353,20 +428,20 @@ if __name__ == "__main__":
 
     # Create solver
     config = {
-        "solver": "rlt1_cplex",
-        "formulation": "rlt1",
+        "solver": "m5_cplex",
+        "formulation": "m5",
         "is_relax": False,  # Use binary variables
         "time_limit": 120,
         "threads": 8,
         "log_output": True,
     }
 
-    solver = RLT1CPLEXSolver(config)
+    solver = M5CPLEXSolver(config)
 
     # Example: solve a single instance
     if len(sys.argv) > 1:
         instance_file = sys.argv[1]
-        solver.solve_instance(instance_file, output_path="rlt1_result.json")
+        solver.solve_instance(instance_file, output_path="m5_result.json")
     else:
         print("Usage: python solver.py <instance_file>")
         print(

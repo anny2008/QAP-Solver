@@ -1,0 +1,15 @@
+{
+  "solver": "column_generation_volume_algorithm",
+  "formulation": "column_generation",
+  "epsilon": 1e-7,
+  "add_most_negative": false,
+  "full_columns_at_once": false,
+  "instance": "/home/local.isima.fr/antran/UFF/QAP-Solver/data/M/instance_02_LEFT.txt",
+  "max_iterations": 120000,
+  "log_output": true,
+  "is_relax": false,
+  "use_bigM": true,
+  "bigM": 1e6,
+  "warmstart": "",
+  "k": 1000
+}
