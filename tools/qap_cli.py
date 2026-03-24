@@ -231,6 +231,58 @@ def run_rlt1_volume(args: "Args", spec: ModuleSpec) -> int:
 
     return _run_subprocess(cmd, spec.workdir)
 
+def run_m4_volume(args: "Args", spec: ModuleSpec) -> int:
+    if not spec.binary:
+        raise ValueError("Missing binary path for m4_volume")
+    
+    # Load config if provided
+    config = _load_config(args.config, spec.default_config)
+    
+    # Determine instance path (CLI arg > config > error)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("M4 Volume requires --instance or instance in config")
+
+    cmd = [str(spec.binary), str(_resolve_path(instance))]
+    
+    # Time limit: CLI > config > default
+    time_limit = args.time_limit or config.get("time_limit")
+    if time_limit is not None:
+        cmd += ["--time", str(time_limit)]
+    
+    # Threads: CLI > config > default
+    threads = args.threads or config.get("threads")
+    if threads is not None:
+        cmd += ["--threads", str(threads)]
+    
+    # Log: CLI > config
+    if args.log or config.get("log_output", False):
+        cmd.append("--log")
+    
+    if args.output:
+        cmd += ["--output", str(_resolve_path(args.output))]
+    
+    # Dual vector save/load from config
+    save_dual = config.get("save_dual", "")
+    if save_dual:
+        cmd += ["--save-dual", str(_resolve_path(save_dual))]
+    
+    load_dual = config.get("load_dual", "")
+    if load_dual:
+        cmd += ["--load-dual", str(_resolve_path(load_dual))]
+        
+        
+    formulation = config.get("formulation", "")
+    if formulation:
+        cmd += ["--formulation", str(formulation)]
+
+    # Fixed variables (file) from CLI or config key "fixed"
+    fixed_path = args.fixed or config.get("fixed")
+    if fixed_path:
+        cmd += ["--fixed", str(_resolve_path(fixed_path))]
+
+    return _run_subprocess(cmd, spec.workdir)
+
 
 def run_rlt1_cplex(args: "Args", spec: ModuleSpec) -> int:
     try:
@@ -244,6 +296,150 @@ def run_rlt1_cplex(args: "Args", spec: ModuleSpec) -> int:
     if not instance:
         raise ValueError("RLT1 CPLEX requires --instance")
     solver = RLT1CPLEXSolver(config)
+
+    # Warm-start: prefer CLI arg, else use config key 'warmstart' if provided
+    warmstart_path = None
+    if args.warmstart:
+        warmstart_path = str(_resolve_path(args.warmstart))
+    elif "warmstart" in config and config["warmstart"]:
+        warmstart_path = str(_resolve_path(config["warmstart"]))
+
+    solution = solver.solve_instance(
+        instance_path=str(_resolve_path(instance)),
+        output_path=str(_resolve_path(args.output)) if args.output else None,
+        warmstart_path=warmstart_path,
+    )
+
+    _print_solution_summary(solution)
+    return 0
+
+def run_m5_cplex(args: "Args", spec: ModuleSpec) -> int:
+    try:
+        from qap.modules.m5_cplex.solver import M5CPLEXSolver
+    except ImportError as exc:
+        print("M5 CPLEX solver missing dependencies (docplex/cplex)", file=sys.stderr)
+        raise exc
+
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("M5 CPLEX requires --instance")
+    solver = M5CPLEXSolver(config)
+
+    # Warm-start: prefer CLI arg, else use config key 'warmstart' if provided
+    warmstart_path = None
+    if args.warmstart:
+        warmstart_path = str(_resolve_path(args.warmstart))
+    elif "warmstart" in config and config["warmstart"]:
+        warmstart_path = str(_resolve_path(config["warmstart"]))
+
+    solution = solver.solve_instance(
+        instance_path=str(_resolve_path(instance)),
+        output_path=str(_resolve_path(args.output)) if args.output else None,
+        warmstart_path=warmstart_path,
+    )
+
+    _print_solution_summary(solution)
+    return 0
+
+def run_qaoa_qiskit(args: "Args", spec: ModuleSpec) -> int:
+    try:
+        from qap.modules.qaoa_qiskit.solver import QAOAQiskitSolver
+    except ImportError as exc:
+        print("QAOA Qiskit solver missing dependencies (qiskit)", file=sys.stderr)
+        raise exc
+
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("QAOA Qiskit requires --instance")
+    solver = QAOAQiskitSolver(config)
+
+    # Warm-start: prefer CLI arg, else use config key 'warmstart' if provided
+    warmstart_path = None
+    if args.warmstart:
+        warmstart_path = str(_resolve_path(args.warmstart))
+    elif "warmstart" in config and config["warmstart"]:
+        warmstart_path = str(_resolve_path(config["warmstart"]))
+
+    solution = solver.solve_instance(
+        instance_path=str(_resolve_path(instance)),
+        output_path=str(_resolve_path(args.output)) if args.output else None,
+        warmstart_path=warmstart_path,
+    )
+
+    _print_solution_summary(solution)
+    return 0
+
+def run_sfdcg_cplex(args: "Args", spec: ModuleSpec) -> int:
+    try:
+        from qap.modules.sfd_cg_cplex.solver import BranchAndPriceSFD
+    except ImportError as exc:
+        print("SFDCG CPLEX solver missing dependencies (docplex/cplex)", file=sys.stderr)
+        raise exc
+
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("SFDCG CPLEX requires --instance")
+    solver = BranchAndPriceSFD(config)
+
+    # Warm-start: prefer CLI arg, else use config key 'warmstart' if provided
+    warmstart_path = None
+    if args.warmstart:
+        warmstart_path = str(_resolve_path(args.warmstart))
+    elif "warmstart" in config and config["warmstart"]:
+        warmstart_path = str(_resolve_path(config["warmstart"]))
+
+    solution = solver.solve_instance(
+        instance_path=str(_resolve_path(instance)),
+        output_path=str(_resolve_path(args.output)) if args.output else None,
+        warmstart_path=warmstart_path,
+    )
+
+    _print_solution_summary(solution)
+    return 0
+
+def run_m5_cg_cplex_cpp(args: "Args", spec: ModuleSpec) -> int:
+    if not spec.binary:
+        raise ValueError("Missing binary path for m5_cg_cplex")
+    
+    # Load config if provided
+    config = _load_config(args.config, spec.default_config)
+    
+    # Determine instance path (CLI arg > config > error)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("M5 Column Generation CPLEX (C++) requires --instance")
+
+    cmd = [str(spec.binary), str(_resolve_path(instance))]
+    
+    config_path = args.config if args.config else str(spec.default_config)
+    config = _load_config(config_path, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("Gilmore-Lawler requires --instance or instance in config")
+    cmd = [str(spec.binary), str(_resolve_path(instance))]
+    # Always pass config file (default or specified)
+    if args.config or spec.default_config:
+        cmd += ["--config", str(_resolve_path(config_path))]
+        
+
+    return _run_subprocess(cmd, spec.workdir)
+    
+
+def run_volume_qaoa_qiskit(args: "Args", spec: ModuleSpec) -> int:
+    try:
+        from qap.modules.volume_qaoa_qiskit.solver import VolumeQAOAQiskitSolver
+    except ImportError as exc:
+        print("Volume QAOA Qiskit solver missing dependencies (qiskit)", file=sys.stderr)
+        raise exc
+
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("Volume QAOA Qiskit requires --instance")
+    solver = VolumeQAOAQiskitSolver(config)
 
     # Warm-start: prefer CLI arg, else use config key 'warmstart' if provided
     warmstart_path = None
@@ -290,6 +486,131 @@ def run_m4_cplex(args: "Args", spec: ModuleSpec) -> int:
     _print_solution_summary(solution)
     return 0
 
+def run_cg_cplex(args: "Args", spec: ModuleSpec) -> int:
+    try:
+        from qap.modules.column_generation.solver import ColumnGenerationCPLEXSolver
+    except ImportError as exc:
+        print("Column Generation CPLEX solver missing dependencies (docplex/cplex)", file=sys.stderr)
+        raise exc
+
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("Column Generation CPLEX requires --instance")
+    solver = ColumnGenerationCPLEXSolver(config)
+
+    # Warm-start: prefer CLI arg, else use config key 'warmstart' if provided
+    warmstart_path = None
+    if args.warmstart:
+        warmstart_path = str(_resolve_path(args.warmstart))
+    elif "warmstart" in config and config["warmstart"]:
+        warmstart_path = str(_resolve_path(config["warmstart"]))
+
+    solution = solver.solve_instance(
+        instance_path=str(_resolve_path(instance)),
+        output_path=str(_resolve_path(args.output)) if args.output else None,
+        warmstart_path=warmstart_path,
+    )
+
+    _print_solution_summary(solution)
+    return 0
+
+def run_cg_cplex_cpp(args: "Args", spec: ModuleSpec) -> int:
+    if not spec.binary:
+        raise ValueError("Missing binary path for column generation CPLEX")
+    
+    # Load config if provided
+    config = _load_config(args.config, spec.default_config)
+    
+    # Determine instance path (CLI arg > config > error)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("Column Generation CPLEX (C++) requires --instance")
+
+    cmd = [str(spec.binary), str(_resolve_path(instance))]
+    
+    config_path = args.config if args.config else str(spec.default_config)
+    config = _load_config(config_path, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("Gilmore-Lawler requires --instance or instance in config")
+    cmd = [str(spec.binary), str(_resolve_path(instance))]
+    # Always pass config file (default or specified)
+    if args.config or spec.default_config:
+        cmd += ["--config", str(_resolve_path(config_path))]
+        
+
+    return _run_subprocess(cmd, spec.workdir)
+
+def run_qubo_volume(args: "Args", spec: ModuleSpec) -> int:
+    if not spec.binary:
+        raise ValueError("Missing binary path for qubo_volume")
+    # Load config if provided
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("QUBO Volume requires --instance or instance in config")
+    else:
+        print(f"[info] using instance: {instance}")
+
+    cmd = [str(spec.binary), str(_resolve_path(instance))]
+
+    # Time limit: CLI > config > default
+    time_limit = args.time_limit or config.get("time_limit")
+    if time_limit is not None:
+        cmd += ["--time", str(time_limit)]
+    
+    # Threads: CLI > config > default
+    threads = args.threads or config.get("threads")
+    if threads is not None:
+        cmd += ["--threads", str(threads)]
+    
+    # Log: CLI > config
+    if args.log or config.get("log_output", False):
+        cmd.append("--log")
+    
+    if args.output:
+        cmd += ["--output", str(_resolve_path(args.output))]
+    
+    return _run_subprocess(cmd, spec.workdir)
+
+def run_cg_va(args: "Args", spec: ModuleSpec) -> int:
+    if not spec.binary:
+        raise ValueError("Missing binary path for column generation volume algorithm")
+    # Load config if provided
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("Column Generation Volume Algorithm requires --instance or instance in config")
+    else:
+        print(f"[info] using instance: {instance}")
+
+    cmd = [str(spec.binary), str(_resolve_path(instance))]
+
+    # Always forward config file so the C++ binary reads cg_va settings
+    config_path = args.config if args.config else str(spec.default_config)
+    if config_path:
+        cmd += ["--config", str(_resolve_path(config_path))]
+
+    # Time limit: CLI > config > default
+    time_limit = args.time_limit or config.get("time_limit")
+    if time_limit is not None:
+        cmd += ["--time", str(time_limit)]
+    
+    # Threads: CLI > config > default
+    threads = args.threads or config.get("threads")
+    if threads is not None:
+        cmd += ["--threads", str(threads)]
+    
+    # Log flag kept for CLI consistency (binary currently relies on config)
+    if args.log or config.get("log_output", False):
+        cmd.append("--log")
+    
+    if args.output:
+        cmd += ["--output", str(_resolve_path(args.output))]
+    
+    return _run_subprocess(cmd, spec.workdir)
+
 def run_rlt1_scip_py(args: "Args", spec: ModuleSpec) -> int:
     try:
         from qap.modules.rlt1_scip.solver import RLT1SCIPSolver
@@ -314,12 +635,55 @@ def run_rlt1_scip_py(args: "Args", spec: ModuleSpec) -> int:
 
 
 def run_sfd_cplex(args: "Args", spec: ModuleSpec) -> int:
-    # The SFD CPLEX implementation requires subgraph decomposition logic that
-    # is not wired in this repository. Provide a clear error until integrated.
-    raise NotImplementedError(
-        "SFD CPLEX runner not yet integrated: subgraph decomposition pipeline is missing."
+    try:
+        from qap.modules.sfd_cplex.solver import SFDSolver
+    except ImportError as exc:
+        print("SFD CPLEX solver missing dependencies (docplex/cplex)", file=sys.stderr)
+        raise exc
+
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("SFD CPLEX requires --instance")
+    solver = SFDSolver(config)
+
+    # Warm-start: prefer CLI arg, else use config key 'warmstart' if provided
+    warmstart_path = None
+    if args.warmstart:
+        warmstart_path = str(_resolve_path(args.warmstart))
+    elif "warmstart" in config and config["warmstart"]:
+        warmstart_path = str(_resolve_path(config["warmstart"]))
+
+    solution = solver.solve_instance(
+        instance_path=str(_resolve_path(instance)),
+        output_path=str(_resolve_path(args.output)) if args.output else None,
+        warmstart_path=warmstart_path,
     )
 
+    _print_solution_summary(solution)
+    return 0
+
+def run_admm(args: "Args", spec: ModuleSpec) -> int:
+    try:
+        from qap.modules.admm.solver import ADMMSolver
+    except ImportError as exc:
+        print("ADMM solver missing dependencies (numpy, scipy)", file=sys.stderr)
+        raise exc
+
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("ADMM requires --instance")
+    solver = ADMMSolver(config)
+
+    solution = solver.solve_instance(
+        instance_path=str(_resolve_path(instance)),
+        output_path=str(_resolve_path(args.output)) if args.output else None,
+        warmstart_path=str(_resolve_path(args.warmstart)) if args.warmstart else None,
+    )
+
+    _print_solution_summary(solution)
+    return 0
 
 def run_local_search(args: "Args", spec: ModuleSpec) -> int:
     if not spec.binary:
@@ -420,6 +784,61 @@ def run_gilmore_lawler(args: "Args", spec: ModuleSpec) -> int:
     result = subprocess.run(cmd, cwd=spec.workdir)
     return result.returncode
 
+def run_qap_cplex(args: "Args", spec: ModuleSpec) -> int:
+    try:
+        from qap.modules.qap_cplex.solver import QAPCplexSolver
+    except ImportError as exc:
+        print("QAP CPLEX solver missing dependencies (docplex/cplex)", file=sys.stderr)
+        raise exc
+
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("QAP CPLEX requires --instance")
+    solver = QAPCplexSolver(config)
+
+    # Warm-start: prefer CLI arg, else use config key 'warmstart' if provided
+    warmstart_path = None
+    if args.warmstart:
+        warmstart_path = str(_resolve_path(args.warmstart))
+    elif "warmstart" in config and config["warmstart"]:
+        warmstart_path = str(_resolve_path(config["warmstart"]))
+
+    solution = solver.solve_instance(
+        instance_path=str(_resolve_path(instance)),
+        output_path=str(_resolve_path(args.output)) if args.output else None,
+        warmstart_path=warmstart_path,
+    )
+
+    _print_solution_summary(solution)
+    return 0
+
+def run_sfdcg_cplex_cpp(args: "Args", spec: ModuleSpec) -> int:
+    if not spec.binary:
+        raise ValueError("Missing binary path for sfdcg_cplex")
+    
+    # Load config if provided
+    config = _load_config(args.config, spec.default_config)
+    
+    # Determine instance path (CLI arg > config > error)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("SFDCG CPLEX (C++) requires --instance")
+
+    cmd = [str(spec.binary), str(_resolve_path(instance))]
+    
+    config_path = args.config if args.config else str(spec.default_config)
+    config = _load_config(config_path, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("Gilmore-Lawler requires --instance or instance in config")
+    cmd = [str(spec.binary), str(_resolve_path(instance))]
+    # Always pass config file (default or specified)
+    if args.config or spec.default_config:
+        cmd += ["--config", str(_resolve_path(config_path))]
+        
+
+    return _run_subprocess(cmd, spec.workdir)
 
 # M4 Formulation runner implementation
 def run_m4_formulation(args: "Args", spec: ModuleSpec) -> int:
@@ -451,6 +870,7 @@ def run_m4_formulation(args: "Args", spec: ModuleSpec) -> int:
     if solution is not None:
         _print_solution_summary(solution)
     return 0
+
 # Helpers --------------------------------------------------------------------
 
 def _resolve_path(path_str: str) -> Path:
@@ -605,12 +1025,74 @@ MODULES: Dict[str, ModuleSpec] = {
         default_config=ROOT / "configs/rlt1_volume.json",
         runner=run_rlt1_volume,
     ),
+    "m4_volume": ModuleSpec(
+        name="m4_volume",
+        kind="cpp",
+        workdir=ROOT / "cpp/modules/m4_volume",
+        binary=ROOT / "cpp/modules/m4_volume/m4_volume_solver",
+        build_cmd=["make"],
+        default_config=ROOT / "configs/m4_volume.json",
+        runner=run_m4_volume,
+    ),
     "rlt1_cplex": ModuleSpec(
         name="rlt1_cplex",
         kind="python",
         workdir=ROOT,
         default_config=ROOT / "configs/rlt1_cplex.json",
         runner=run_rlt1_cplex,
+    ),
+    "m5_cplex": ModuleSpec(
+        name="m5_cplex",
+        kind="python",
+        workdir=ROOT,
+        default_config=ROOT / "configs/m5_cplex.json",
+        runner=run_m5_cplex,
+    ),
+    "cg_cplex": ModuleSpec(
+        name="cg_cplex",
+        kind="python",
+        workdir=ROOT,
+        default_config=ROOT / "configs/cg_cplex.json",
+        runner=run_cg_cplex,
+    ),
+    "cg_cplex_cpp": ModuleSpec(
+        name="cg_cplex_cpp",
+        kind="cpp",
+        workdir=ROOT / "cpp/modules/cg_cplex",
+        binary=ROOT / "cpp/modules/cg_cplex/cg_cplex",
+        build_cmd=["make"],
+        default_config=ROOT / "configs/cg_cplex.json",
+        runner=run_cg_cplex_cpp,
+    ),
+    "sfdcg_cplex": ModuleSpec(
+        name="sfdcg_cplex",
+        kind="python",
+        workdir=ROOT,
+        default_config=ROOT / "configs/sfdcg_cplex.json",
+        runner=run_sfdcg_cplex,
+    ),
+    "sfdcg_cplex_cpp": ModuleSpec(
+        name="sfdcg_cplex_cpp",
+        kind="cpp",
+        workdir=ROOT / "cpp/modules/sfdcg_cplex",
+        binary=ROOT / "cpp/modules/sfdcg_cplex/sfdcg_cplex",
+        build_cmd=["make"],
+        default_config=ROOT / "configs/sfdcg_cplex.json",
+        runner=run_sfdcg_cplex_cpp,
+    ),
+    "qaoa_qiskit": ModuleSpec(
+        name="qaoa_qiskit",
+        kind="python",
+        workdir=ROOT,
+        default_config=ROOT / "configs/qaoa_qiskit.json",
+        runner=run_qaoa_qiskit,
+    ),
+    "volume_qaoa_qiskit": ModuleSpec(
+        name="volume_qaoa_qiskit",
+        kind="python",
+        workdir=ROOT,
+        default_config=ROOT / "configs/volume_qaoa_qiskit.json",
+        runner=run_volume_qaoa_qiskit,
     ),
     "m4_cplex": ModuleSpec(
         name="m4_cplex",
@@ -648,6 +1130,47 @@ MODULES: Dict[str, ModuleSpec] = {
         workdir=ROOT,
         default_config=ROOT / "configs/m4_formulation.json",
         runner=lambda args, spec: run_m4_formulation(args, spec),
+    ),
+    "qubo_volume": ModuleSpec(
+        name="qubo_volume",
+        kind="cpp",
+        workdir=ROOT / "cpp/modules/qubo_volume",
+        binary=ROOT / "cpp/modules/qubo_volume/qubo_volume_solver",
+        build_cmd=["make"],
+        default_config=ROOT / "configs/qubo_volume.json",
+        runner=run_qubo_volume,
+    ),
+    "qap_cplex": ModuleSpec(
+        name="qap_cplex",
+        kind="python",
+        workdir=ROOT,
+        default_config=ROOT / "configs/qap_cplex.json",
+        runner=run_qap_cplex,  # Reuse qap_cplex runner since it's a similar CPLEX-based solver
+    ),
+    "cg_va": ModuleSpec(
+        name="cg_va",
+        kind="cpp",
+        workdir=ROOT / "cpp/modules/cg_va",
+        binary=ROOT / "cpp/modules/cg_va/cg_va",
+        build_cmd=["make"],
+        default_config=ROOT / "configs/cg_va.json",
+        runner=run_cg_va,
+    ),
+    "m5_cg_cplex_cpp": ModuleSpec(
+        name="m5_cg_cplex_cpp",
+        kind="cpp",
+        workdir=ROOT / "cpp/modules/m5_cg_cplex",
+        binary=ROOT / "cpp/modules/m5_cg_cplex/m5_cg_cplex",
+        build_cmd=["make"],
+        default_config=ROOT / "configs/m5_cg_cplex.json",
+        runner=run_m5_cg_cplex_cpp,
+    ),
+    "admm": ModuleSpec(
+        name="admm",
+        kind="python",
+        workdir=ROOT,
+        default_config=ROOT / "configs/admm.json",
+        runner=run_admm,
     ),
 }
 
