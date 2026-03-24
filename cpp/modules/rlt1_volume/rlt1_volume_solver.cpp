@@ -1061,12 +1061,9 @@ int RLT1VolumeHooks4::solve_subproblem_4(const VOL_dvector& pi,
     #pragma omp parallel for collapse(2) reduction(+:pcost) schedule(static)
     for (int i = 0; i < n; ++i) {
         for (int j = 0; j < n; ++j) {
-            for (int u = 0; u < n; ++u) {
-                for (int v = 0; v < n; ++v) {
-                    pcost += qap_data.D[i][j] * qap_data.F[u][v] * z(i, u, j, v);
-                }
-            }
-        }
+        double sum = 0.0;
+        for (int v = 0; v < m_eff; ++v) sum += x(j,v);
+        ind_real_j[j] = std::min(1.0, sum);
     }
     
     // STEP 5: Compute constraint violations
