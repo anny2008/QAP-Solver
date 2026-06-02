@@ -1,3 +1,6 @@
+
+import time
+
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
@@ -33,14 +36,14 @@ def ADMM_QAP(L, Vhat, J, opts):
     nrmL = np.linalg.norm(L, 'fro')
     L = (L / nrmL) * n2
 
-    feas = np.zeros(maxit)
-    obj = np.zeros(maxit)
-    hist_pr = np.zeros(maxit)
-    hist_dr = np.zeros(maxit)
-    pos_eig = np.zeros(maxit)
+    feas = 0
+    obj = 0
+    hist_pr = 0
+    hist_dr = 0
 
     fVhat = Vhat
-
+    
+    start_time = time.time()
     for iter in range(maxit):
         # Step 1: update R
         W = Y + Z / beta
@@ -56,7 +59,6 @@ def ADMM_QAP(L, Vhat, J, opts):
                 R = U[:, idx] @ np.diag(Svals[idx]) @ U[:, idx].T    # 122×122
             else:
                 R = np.zeros((Vhat.shape[1], Vhat.shape[1]))          # 122×122
-            pos_eig[iter] = len(idx)
         else:
             # rank-1 projection
             Svals, U = np.linalg.eigh(WVhat)
@@ -92,21 +94,24 @@ def ADMM_QAP(L, Vhat, J, opts):
 
         nrm_pR = np.linalg.norm(pR, 'fro')
         nrm_dR = beta * np.linalg.norm(dR, 'fro')
-        hist_pr[iter] = nrm_pR
-        hist_dr[iter] = nrm_dR
-        obj[iter] = np.sum(L * Y)
-        feas[iter] = nrm_pR / np.linalg.norm(Y, 'fro')
+        hist_pr = nrm_pR
+        hist_dr = nrm_dR
+        obj = np.sum(L * Y)
+        feas = nrm_pR / np.linalg.norm(Y, 'fro')
 
         if nrm_pR < tol and nrm_dR < tol:
             break
-        print(f"Iteration {iter}: obj={obj[iter]:.4f}")
+        if iter % 100 == 0:
+            cur_obj = obj * nrmL / n2
+            passed_time = time.time() - start_time
+            print(f"Iteration {iter} - Time: {passed_time:.2f}s: obj={cur_obj:.4f} feas={feas:.4e}")
 
     Out = {
-        "obj": obj[:iter+1] * nrmL / n2,
+        "obj": obj * nrmL / n2,
         "iter": iter+1,
-        "pr": hist_pr[:iter+1],
-        "dr": hist_dr[:iter+1],
-        "feas": feas[:iter+1],
+        "pr": hist_pr,
+        "dr": hist_dr,
+        "feas": feas,
         "Z": Z * nrmL / n2
     }
 

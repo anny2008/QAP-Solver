@@ -67,16 +67,21 @@ def load_qaplib_solution(sln_filepath: str) -> Tuple[float, List[int]]:
         raise FileNotFoundError(f"Solution file not found: {filepath}")
     
     with open(filepath, 'r') as f:
-        header = f.readline().strip().split()
-        body = f.readline().strip().split()
+        tokens = f.read().split()
+
+    header = tokens[:2]
+    body = tokens[2:]
 
     if len(header) < 2:
         raise ValueError("Invalid solution header: expected 'n objective'")
 
     n = int(header[0])
     optimal_value = float(header[1])
-
+    
     perm_1indexed = [int(x) for x in body if x]
+    #  if in perm_1indexed there is 0 then the solution is 0-indexed, otherwise it is 1-indexed
+    if 0 in perm_1indexed:
+        perm_1indexed = [x + 1 for x in perm_1indexed]  # Convert to 1-indexed if needed
     if len(perm_1indexed) != n:
         raise ValueError(f"Invalid solution body: expected {n} entries, got {len(perm_1indexed)}")
 

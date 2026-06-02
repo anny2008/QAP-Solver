@@ -152,7 +152,8 @@ def ADMM_QAPs(L, Vhat, J, opts):
         # stopping test
         if nrm_pR < tol and nrm_dR < tol:
             break
-        print(f"Iteration {it}: obj={obj[it]:.4f}")
+        if it % 100 == 0:
+            print(f"Iteration {it}: obj={obj[it]:.4f} feas={feas[it]:.4e}")
 
     # ===========================================================
     # 3. Export outputs

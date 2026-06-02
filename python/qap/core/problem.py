@@ -21,6 +21,8 @@ class Problem:
         self.m = m
         self.F = np.array(F, dtype=float)
         self.D = np.array(D, dtype=float)
+        self.F_positive = None  # Cache for positive flow entries
+        self.D_positive = None  # Cache for positive distance entries
         assert self.F.shape == (m, m), f"Flow matrix F must be of shape ({m}, {m})"
         assert self.D.shape == (n, n), f"Distance matrix D must be of shape ({n}, {n})"
 
@@ -163,13 +165,64 @@ class Problem:
         Returns:
             float: Objective value = sum(F[u,v] * D[i, j]) for all i,j
         """
-        assignment = np.array(assignment, dtype=int)
-        assert len(assignment) == self.n, f"Assignment length must be {self.n}"
-
+        if self.F_positive is None:
+            self.F_positive = {(u,v): self.F[u,v] for u in range(self.m) for v in range(self.m) if self.F[u,v] > 0}
+        if self.D_positive is None:
+            self.D_positive = {(i,j): self.D[i,j] for i in range(self.n) for j in range(self.n) if self.D[i,j] > 0}
+        
         obj = 0.0
-        for i in range(self.n):
-            for j in range(self.n):
-                obj += self.F[assignment[i], assignment[j]] * self.D[i, j]
+        if len(self.F_positive) > len(self.D_positive):
+            assignment2 = {i: assignment[i] for i in range(self.n)}
+            # compute sum over positive distances
+            for (i,j) in self.D_positive:
+                u = assignment[i]
+                v = assignment[j]
+                if u != -1 and v != -1:  # only consider pairs of distinct locations with assigned facilities
+                    obj += self.F[u, v] * self.D[i, j]
+        else:            # compute sum over positive flows
+            # print(assignment)
+            assignment2 = {u: i for i, u in enumerate(assignment) if u != -1}
+            # print(assignment2)
+            for (u,v) in self.F_positive:
+                i = assignment2[u]
+                j = assignment2[v]
+                obj += self.F[u, v] * self.D[i, j]
+
+        return obj
+
+    def evaluate_assignment_dict(self, assignment):
+        """
+        Evaluate the objective value for a given assignment.
+
+        Args:
+            assignment (dict): Dict π where π[i] = u means
+                               facility u is assigned to location i
+
+        Returns:
+            float: Objective value = sum(F[u,v] * D[i, j]) for all i,j
+        """
+        if self.F_positive is None:
+            self.F_positive = {(u,v): self.F[u,v] for u in range(self.m) for v in range(self.m) if self.F[u,v] > 0}
+        if self.D_positive is None:
+            self.D_positive = {(i,j): self.D[i,j] for i in range(self.n) for j in range(self.n) if self.D[i,j] > 0}
+        
+        obj = 0.0
+        if len(self.F_positive) > len(self.D_positive):
+            assignment2 = {i: assignment[i] for i in range(self.n)}
+            # compute sum over positive distances
+            for (i,j) in self.D_positive:
+                u = assignment[i]
+                v = assignment[j]
+                if u != -1 and v != -1:  # only consider pairs of distinct locations with assigned facilities
+                    obj += self.F[u, v] * self.D[i, j]
+        else:            # compute sum over positive flows
+            # print(assignment)
+            assignment2 = {u: i for i, u in assignment.items() if u != -1}
+            # print(assignment2)
+            for (u,v) in self.F_positive:
+                i = assignment2[u]
+                j = assignment2[v]
+                obj += self.F[u, v] * self.D[i, j]
 
         return obj
 

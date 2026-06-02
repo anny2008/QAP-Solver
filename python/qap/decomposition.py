@@ -7,7 +7,7 @@ from typing import Dict, List, Set, Tuple
 import numpy as np
 
 
-def decompose_value_layer(problem) -> Dict[int, Tuple[float, List[Tuple[int, int]], Set[int]]]:
+def decompose_value_layer(problem, matrix='flow') -> Dict[int, Tuple[float, List[Tuple[int, int]], Set[int]]]:
     """
     Decompose flow matrix into value layers.
 
@@ -15,6 +15,7 @@ def decompose_value_layer(problem) -> Dict[int, Tuple[float, List[Tuple[int, int
 
     Args:
         problem: QAP problem instance with F (flow matrix) and m
+        matrix: 'flow' or 'distance'
 
     Returns:
         dict: {k: (f_k, G_k, G_n_k)} where
@@ -23,7 +24,10 @@ def decompose_value_layer(problem) -> Dict[int, Tuple[float, List[Tuple[int, int
             G_n_k: set of nodes in layer k
     """
     n = problem.m
-    flows = problem.F.copy()
+    if matrix == 'flow':
+        flows = problem.F.copy()
+    elif matrix == 'distance':
+        flows = problem.D.copy()
     subgraphs: Dict[int, Tuple[float, List[Tuple[int, int]], Set[int]]] = {}
     k = 0
 
@@ -61,12 +65,13 @@ def decompose_value_layer(problem) -> Dict[int, Tuple[float, List[Tuple[int, int
     return subgraphs
 
 
-def decompose_value_only(problem) -> Dict[int, Tuple[float, List[Tuple[int, int]], Set[int]]]:
+def decompose_value_only(problem, matrix='flow') -> Dict[int, Tuple[float, List[Tuple[int, int]], Set[int]]]:
     """
     Decompose flow matrix by grouping edges with the same flow value.
 
     Args:
         problem: QAP problem instance with F (flow matrix) and m
+        matrix: 'flow' or 'distance'
 
     Returns:
         dict: {k: (f_k, G_k, G_n_k)} grouped by flow values
@@ -76,9 +81,14 @@ def decompose_value_only(problem) -> Dict[int, Tuple[float, List[Tuple[int, int]
 
     for u in range(n):
         for v in range(n):
-            if problem.F[u, v] > 1e-9:
-                f_val = float(problem.F[u, v])
-                temp_subgraphs.setdefault(f_val, []).append((u, v))
+            if matrix == 'flow':
+                if problem.F[u, v] > 1e-9:
+                    f_val = float(problem.F[u, v])
+                    temp_subgraphs.setdefault(f_val, []).append((u, v))
+            elif matrix == 'distance':
+                if problem.D[u, v] > 1e-9:
+                    f_val = float(problem.D[u, v])
+                    temp_subgraphs.setdefault(f_val, []).append((u, v))
 
     subgraphs: Dict[int, Tuple[float, List[Tuple[int, int]], Set[int]]] = {}
     for k, (f_k, edges) in enumerate(sorted(temp_subgraphs.items())):
@@ -86,18 +96,24 @@ def decompose_value_only(problem) -> Dict[int, Tuple[float, List[Tuple[int, int]
         for u, v in edges:
             G_n_k.add(u)
             G_n_k.add(v)
-        subgraphs[k] = (f_k, edges, G_n_k)
-
+        subgraphs[k + 1] = (f_k, edges, G_n_k)
+    arcs_0 = [(u,v) for u in range(n) for v in range(n) if problem.F[u, v] <= 1e-9 and u != v]
+    nodes_0 = set()
+    for u, v in arcs_0:
+        nodes_0.add(u)
+        nodes_0.add(v)
+    subgraphs[0] = (0.0, arcs_0, nodes_0)  # Add empty subgraph for zero flow
     return subgraphs
 
 
-def decompose_value_only_no_cycle3(problem) -> Dict[int, Tuple[float, List[Tuple[int, int]], Set[int]]]:
+def decompose_value_only_no_cycle3(problem, matrix='flow') -> Dict[int, Tuple[float, List[Tuple[int, int]], Set[int]]]:
     """
     Decompose flow matrix by grouping edges with the same flow value.
     Remove cycles of length 3 from the subgraphs by moving arcs to new subgraphs.
 
     Args:
         problem: QAP problem instance with F (flow matrix) and m
+        matrix: 'flow' or 'distance'
 
     Returns:
         dict: {k: (f_k, G_k, G_n_k)} grouped by flow values
@@ -107,10 +123,14 @@ def decompose_value_only_no_cycle3(problem) -> Dict[int, Tuple[float, List[Tuple
 
     for u in range(n):
         for v in range(n):
-            if problem.F[u, v] > 1e-9:
-                f_val = float(problem.F[u, v])
-                temp_subgraphs.setdefault(f_val, []).append((u, v))
-    
+            if matrix == 'flow':
+                if problem.F[u, v] > 1e-9:
+                    f_val = float(problem.F[u, v])
+                    temp_subgraphs.setdefault(f_val, []).append((u, v))
+            elif matrix == 'distance':
+                if problem.D[u, v] > 1e-9:
+                    f_val = float(problem.D[u, v])
+                    temp_subgraphs.setdefault(f_val, []).append((u, v))
 
     subgraphs: Dict[int, Tuple[float, List[Tuple[int, int]], Set[int]]] = {}
     for k, (f_k, edges) in enumerate(sorted(temp_subgraphs.items())):

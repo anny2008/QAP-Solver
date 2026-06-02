@@ -204,10 +204,11 @@ class ADMMSolver:
         opts = {
             "R0": R0, "Y0": Y0, "Z0": Z0,
             "A": A, "B": B,
-            "maxit": 4000,
+            "maxit": 1000000,
             "beta": n/3,
             "tol": 1e-5
         }
+        print("==================================================")
         print("\nRunning dense ADMM...")
         start_time_1 = time.time()
         R1, Y1, Out1 = ADMM_QAP(L, Vhat, J, opts)
@@ -216,13 +217,14 @@ class ADMMSolver:
         print("Objective:", Out1["obj"][-1])
         print("Time (dense): {:.2f}s".format(elapsed_time_1))
 
-        print("\nRunning sparse ADMM...")
-        start_time_2 = time.time()
-        R2, Y2, Out2 = ADMM_QAPs(L, Vhat, J, opts)
-        elapsed_time_2 = time.time() - start_time_2
-        print("Iterations:", Out2["iter"])
-        print("Objective:", Out2["obj"][-1])
-        print("Time (sparse): {:.2f}s".format(elapsed_time_2))
+        # print("==================================================")
+        # print("\nRunning sparse ADMM...")
+        # start_time_2 = time.time()
+        # R2, Y2, Out2 = ADMM_QAPs(L, Vhat, J, opts)
+        # elapsed_time_2 = time.time() - start_time_2
+        # print("Iterations:", Out2["iter"])
+        # print("Objective:", Out2["obj"][-1])
+        # print("Time (sparse): {:.2f}s".format(elapsed_time_2))
         elapsed_time = time.time() - start_time
         
         result = Solution(
