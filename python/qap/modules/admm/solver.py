@@ -214,7 +214,7 @@ class ADMMSolver:
         R1, Y1, Out1 = ADMM_QAP(L, Vhat, J, opts)
         elapsed_time_1 = time.time() - start_time_1
         print("Iterations:", Out1["iter"])
-        print("Objective:", Out1["obj"][-1])
+        print("Objective:", Out1["obj"])
         print("Time (dense): {:.2f}s".format(elapsed_time_1))
 
         # print("==================================================")

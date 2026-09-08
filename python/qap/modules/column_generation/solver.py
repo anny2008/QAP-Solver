@@ -5,6 +5,9 @@
 from pathlib import Path
 import time
 import numpy as np
+import cplex
+
+np.float_ = np.float64
 from typing import Dict, Any, Optional, Tuple, List
 
 # Project types
@@ -33,15 +36,13 @@ class ColumnGenerationCPLEXSolver:
         self.bigM = 1e10
         self.eps = float(config.get("epsilon", 1e-7))
         self.max_iterations = int(config.get("max_iterations", 10000))
-        self.log_output = config.get("log_output", False)
+        self.log_output = config.get("log_output", True)
         self.sep_top_k = int(config.get("sep_top_k", 1))
 
     # --------------------------------------------------------------
     # Main entry point
     # --------------------------------------------------------------
     def solve(self, problem: Problem, fixed_variables: Optional[List[Tuple[int, int]]] = None, warmstart: Optional[Dict] = None) -> Solution:
-        
-
         # Extract QAP data
         D = problem.D
         F = problem.F
@@ -60,25 +61,22 @@ class ColumnGenerationCPLEXSolver:
         phi = {(i,u,j,v): float(D[i][j]) * float(F[u][v]) for i in V for u in M for j in V for v in M}
 
         # Build initial Ω
-        Omega0 = self._build_initial_Omega(V, M, D, F, fixed_assignments)
+        # Omega0 = self._build_initial_Omega(V, M, D, F, fixed_assignments)
         # Load Omega0 from file if exists (for warm start)
-        # omega_file = f"basis_cols_{problem.instance_name}.txt"
-        # if Path(omega_file).exists():
-        #     print(f"Loading initial Omega from {omega_file}...")
-        #     Omega0 = set()
-        #     with open(omega_file, "r") as f:
-        #         for line in f:
-        #             if line.startswith('y'): # y_i_u_j_v
-        #                 (i, u, j, v) = map(int, line.strip()[2:].split('_'))
-        #                 Omega0.add((i, u, j, v))
-        #     print(f"Initial Omega size: {len(Omega0)}")
-        # else:            
-        #     print(f"Building initial Omega...")
-        #     Omega0 = self._build_initial_Omega(V, M, D, F, fixed_assignments)
-        #     with open(omega_file, "w") as f:
-        #         for (i,u,j,v) in Omega0:
-        #             f.write(f"{i},{u},{j},{v}\n")
-        #     print(f"Initial Omega size: {len(Omega0)}")
+        omega_file = f"basis_cols_{problem.instance_name}.txt"
+        if Path(omega_file).exists():
+            print(f"Loading initial Omega from {omega_file}...")
+            Omega0 = set()
+            with open(omega_file, "r") as f:
+                for line in f:
+                    if line.startswith('y'): # y_i_u_j_v
+                        (i, u, j, v) = map(int, line.strip()[2:].split('_'))
+                        Omega0.add((i, u, j, v))
+            print(f"Initial Omega size: {len(Omega0)}")
+        else:            
+            print(f"Building initial Omega...")
+            Omega0 = self._build_initial_Omega(V, M, D, F, fixed_assignments)
+            print(f"Initial Omega size: {len(Omega0)}")
 
         # Instantiate RMP
         rmp = IncrementalRMP(V, M, phi, bigM=self.bigM)
@@ -89,7 +87,7 @@ class ColumnGenerationCPLEXSolver:
         for (i, u, j, v) in Omega0:
             rmp.add_column(i, u, j, v, force=False)  # force=True to create all base rows for these columns
         
-        rmp.check_row_correctness()
+        # rmp.check_row_correctness()
 
         # Engines
         pricing = PricingEngine(
@@ -100,7 +98,6 @@ class ColumnGenerationCPLEXSolver:
             eps=self.eps,
             fixed_assignments=fixed_assignments,
         )
-        separation = SeparationEngine(V, M, eps=self.eps, top_k=self.sep_top_k)
 
         iteration = 0
         best_obj = None
@@ -167,6 +164,10 @@ class ColumnGenerationCPLEXSolver:
             if self.log_output:
                 print('-' * 40)
                 print(f"Iteration {iteration}:  obj={rmp.get_objective_value():.6f}")
+            
+            t0 = time.time()
+            y_vals = rmp.get_y_values()
+            print(f" -Retrieved RMP solution in {time.time()-t0:.2f}s; number of positive columns = {len(y_vals)}")
 
             # 2) Pricing
             t0 = time.time()
@@ -175,43 +176,43 @@ class ColumnGenerationCPLEXSolver:
                 print(f" -Pricing took {time.time()-t0:.2f}s  ; best_rc={best_rc:.6f}, negative_cols={len(negative_cols)}, most_negative_columns={len(most_negative_columns)}")
 
             t0 = time.time()
-            # if self.add_most_negative:
-            #     if best_col is not None and best_rc < -self.eps:
-            #         for idx, rc in most_negative_columns:
-            #             (i, u, j, v) = idx
-            #             if self._is_consistent_with_fixed(i, u, j, v, fixed_assignments):
-            #                 rmp.add_column(i, u, j, v)
-            #         added = True
-            #         if self.log_output:
-            #             print(f" Added {len(most_negative_columns)} most negative columns")
-            # else:
-            #     if negative_cols:
-            #         for (idx, rc) in negative_cols:
-            #             (i, u, j, v) = idx
-            #             if self._is_consistent_with_fixed(i, u, j, v, fixed_assignments):
-            #                 rmp.add_column(i, u, j, v)
-            #         added = True
-            #         if self.log_output:
-            #             print(f" Added {len(negative_cols)} negative-rc columns")
-            # print(f"Adding columns took {time.time()-t0:.2f}s")
-            if len(most_negative_columns) > 1:
-                # add all columns with rc within eps of best_rc
-                for idx, rc in most_negative_columns:
-                    (i, u, j, v) = idx
-                    if self._is_consistent_with_fixed(i, u, j, v, fixed_assignments):
-                        rmp.add_column(i, u, j, v)
-                added = True
-                if self.log_output:
-                    print(f" Added {len(most_negative_columns)} most negative columns with rc within {self.eps} of best_rc={best_rc:.6f}")
-            elif best_col is not None and best_rc < -self.eps:
-                # add all negative columns
-                for idx, rc in negative_cols:
-                    (i, u, j, v) = idx
-                    if self._is_consistent_with_fixed(i, u, j, v, fixed_assignments):
-                        rmp.add_column(i, u, j, v)
-                added = True
-                if self.log_output:
-                    print(f" Added {len(negative_cols)} negative-rc columns")
+            if self.add_most_negative:
+                if best_col is not None and best_rc < -self.eps:
+                    for idx, rc in most_negative_columns:
+                        (i, u, j, v) = idx
+                        if self._is_consistent_with_fixed(i, u, j, v, fixed_assignments):
+                            rmp.add_column(i, u, j, v)
+                    added = True
+                    if self.log_output:
+                        print(f" Added {len(most_negative_columns)} most negative columns")
+            else:
+                if negative_cols:
+                    for (idx, rc) in negative_cols:
+                        (i, u, j, v) = idx
+                        if self._is_consistent_with_fixed(i, u, j, v, fixed_assignments):
+                            rmp.add_column(i, u, j, v)
+                    added = True
+                    if self.log_output:
+                        print(f" Added {len(negative_cols)} negative-rc columns")
+            print(f"Adding columns took {time.time()-t0:.2f}s")
+            # if len(most_negative_columns) > 1 and best_rc < -self.eps:
+            #     # add all columns with rc within eps of best_rc
+            #     for idx, rc in most_negative_columns:
+            #         (i, u, j, v) = idx
+            #         if self._is_consistent_with_fixed(i, u, j, v, fixed_assignments):
+            #             rmp.add_column(i, u, j, v)
+            #     added = True
+            #     if self.log_output:
+            #         print(f" Added {len(most_negative_columns)} most negative columns with rc within {self.eps} of best_rc={best_rc:.6f}")
+            # elif best_col is not None and best_rc < -self.eps:
+            #     # add all negative columns
+            #     for idx, rc in negative_cols:
+            #         (i, u, j, v) = idx
+            #         if self._is_consistent_with_fixed(i, u, j, v, fixed_assignments):
+            #             rmp.add_column(i, u, j, v)
+            #     added = True
+            #     if self.log_output:
+            #         print(f" Added {len(negative_cols)} negative-rc columns")
             
             
             if added:
@@ -307,7 +308,78 @@ class ColumnGenerationCPLEXSolver:
         with open(f"basis_cols_{problem.instance_name}.txt", "w") as f:
             for col in basis_cols:
                 f.write(f"{col}\n")
-
+                
+        # Try to find a sparse solution
+        # Minimize number of nonzeros in y while keeping objective value within eps
+        #  min sum_{(i,u,j,v) in y_vals} y[i,u,j,v]
+        #  s.t. sum_{all y variables} phi[i,u,j,v] * y[i,u,j,v] >= current_obj - eps
+        #      all existing constraints
+        print(f"Finding sparse solution...")
+        
+        # Calculate actual objective from y values
+        current_obj = rmp.get_objective_value()
+        
+        model = rmp.cpx
+        
+        
+        # Reset ALL objective coefficients to 0 first
+        model.objective.set_linear([])
+        
+        # # Now set only y variable coefficients to 1.0 for positive y values
+        for k in rmp.col_index.keys():
+            idx = rmp.col_index[k]
+            model.objective.set_linear(idx, 1.0)
+        
+        # Add constraint: original objective >= actual_y_obj - tolerance
+        # Use the actual objective from y values with a small tolerance
+        indices = [rmp.col_index[k] for k in rmp.col_index.keys()]
+        coeffs = [phi[i,u,j,v]+phi[j,v,i,u] if i!=j else phi[i,u,j,v] for i,u,j,v in rmp.col_index.keys()]
+        rhs_value = current_obj - self.eps
+        
+        # print(f"Adding objective bound constraint: sum phi*y >= {rhs_value:.6f}")
+        model.linear_constraints.add(
+            lin_expr=[cplex.SparsePair(indices, coeffs)],
+            senses=['G'],
+            rhs=[rhs_value],
+            names=['obj_bound']
+        )
+        
+        model.set_problem_type(model.problem_type.LP)
+        model.solve()
+        status = model.solution.get_status()
+        print(f"Sparsification solve status: {status}, obj={model.solution.get_objective_value():.6f}")
+        
+        # Extract the solution values
+        if status not in [1, 6]:  # 1=optimal, 6=MIP_optimal
+            print(f"Warning: sparsification solver status = {status}, using original solution")
+            y_vals_sparsified = y_vals
+            x_vals_sparsified = x_vals
+        else:
+            sol = model.solution
+            sparse_obj = sol.get_objective_value()
+            y_vals_sparsified = {k: sol.get_values(idx) for k, idx in rmp.col_index.items() if sol.get_values(idx) > self.eps}
+            print(f"Sparsified solution has {len(y_vals_sparsified)} nonzeros out of {len(rmp.col_index)} columns (obj={sparse_obj:.2f})")
+            
+            # Compute x from y_vals_sparsified
+            x_vals_sparsified = rmp.get_x_values()
+            
+            
+            # Check if x is valid
+            for i in V:
+                sum_i = sum(x_vals_sparsified.get((i,u), 0.0) for u in M)
+                if abs(sum_i - 1.0) > self.eps:
+                    print(f"Warning: sparsified x variables for location {i} sum to {sum_i:.6f} (should be 1.0)")
+                    return None
+            for u in M:
+                sum_u = sum(x_vals_sparsified.get((i,u), 0.0) for i in V)
+                if abs(sum_u - 1.0) > self.eps:
+                    print(f"Warning: sparsified x variables for facility {u} sum to {sum_u:.6f} (should be 1.0)")
+                    return None
+            
+            # Print out x values after sparsification
+            # for i,u in x_vals_sparsified:
+            #     if x_vals_sparsified[(i,u)] > self.eps:
+            #         print(f"Sparsified x[{i},{u}] = {x_vals_sparsified[(i,u)]:.6f}")
         return Solution(
             instance="",
             assignment=assignment,

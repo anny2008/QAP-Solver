@@ -1,0 +1,2 @@
+# Fix x[0,0] = 1 (0-based indices)
+x 0 0 1

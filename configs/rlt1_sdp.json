@@ -1,0 +1,10 @@
+{
+  "solver": "mosek",
+  "formulation": "rlt1",
+  "instance": "data/QAPLIB/tai12a.dat",
+  "threads": 100,
+  "log_output": true,
+  "is_relax": true,
+  "time_limit": 6040800,
+  "warmstart": ""
+}

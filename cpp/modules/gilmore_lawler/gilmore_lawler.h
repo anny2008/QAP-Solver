@@ -23,8 +23,7 @@ public:
      * @param problem QAP instance
      * @return lower bound (double)
      */
-    GLBResult compute(const std::vector<std::vector<double>>& F,
-                               const std::vector<std::vector<double>>& D);
+    GLBResult compute(Problem& problem);
 };
 
 #endif // QAP_GILMORE_LAWLER_H

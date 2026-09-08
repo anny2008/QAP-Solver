@@ -249,7 +249,7 @@ public:
    }
 
       /** Move assignment swaps storage. */
-      VOL_dvector &operator=(VOL_dvector &&w) noexcept { swap(w); return *this; }
+   VOL_dvector &operator=(VOL_dvector &&w) noexcept { swap(w); return *this; }
 
    /** Copy <code>w</code> into the vector. */
    VOL_dvector &operator=(const VOL_dvector &w);
@@ -499,42 +499,39 @@ public:
       case green:
          cons = iter - VolMax(lastyellowiter, lastrediter);
          if (parm.printflag & 4)
-            printf("      G: Consecutive Gs = %3d\n\n", cons);
+            std::cout << "\r      G: Consecutive Gs = " << cons << std::flush;
          if (cons >= parm.greentestinvl && lambda < 2.0)
          {
             lastgreeniter = lastyellowiter = lastrediter = iter;
             lambdafactor = 2.0;
             if (parm.printflag & 2)
-               printf("\n ---- increasing lamda to %g ----\n\n",
-                      lambda * lambdafactor);
+               std::cout << "\r ---- increasing lamda to " << lambda * lambdafactor << " ----" << std::flush;
          }
          break;
 
       case yellow:
          cons = iter - VolMax(lastgreeniter, lastrediter);
          if (parm.printflag & 4)
-            printf("      Y: Consecutive Ys = %3d\n\n", cons);
+            std::cout << "\r      Y: Consecutive Ys = " << cons << std::flush;
          if (cons >= parm.yellowtestinvl)
          {
             lastgreeniter = lastyellowiter = lastrediter = iter;
             lambdafactor = 1.1;
             if (parm.printflag & 2)
-               printf("\n **** increasing lamda to %g *****\n\n",
-                      lambda * lambdafactor);
+               std::cout << "\r **** increasing lamda to " << lambda * lambdafactor << " *****" << std::flush;
          }
          break;
 
       case red:
          cons = iter - VolMax(lastgreeniter, lastyellowiter);
          if (parm.printflag & 4)
-            printf("      R: Consecutive Rs = %3d\n\n", cons);
+            std::cout << "\r      R: Consecutive Rs = " << cons << std::flush;
          if (cons >= parm.redtestinvl && lambda > eps)
          {
             lastgreeniter = lastyellowiter = lastrediter = iter;
             lambdafactor = 0.67;
             if (parm.printflag & 2)
-               printf("\n **** decreasing lamda to %g *****\n\n",
-                      lambda * lambdafactor);
+               std::cout << "\r **** decreasing lamda to " << lambda * lambdafactor << " *****" << std::flush;
          }
          break;
       }
@@ -544,7 +541,7 @@ public:
    inline void
    print()
    {
-      printf("**** G= %i, Y= %i, R= %i ****\n", ngs, nys, nrs);
+      std::cout << "**** G= " << ngs << ", Y= " << nys << ", R= " << nrs << " ****" << std::flush;
       ngs = nrs = nys = 0;
    }
 };

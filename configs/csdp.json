@@ -1,0 +1,10 @@
+{
+  "solver": "admm",
+  "formulation": "csdp",
+  "instance": "/home/local.isima.fr/antran/UFF/QAP_New_formulation/data/QAPLIB/chr12a.dat",
+  "time_limit": 6040800,
+  "threads": 8,
+  "log_output": true,
+  "is_relax": true,
+  "warmstart": ""
+}

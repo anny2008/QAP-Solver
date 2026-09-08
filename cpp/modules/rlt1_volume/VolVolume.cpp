@@ -11,13 +11,13 @@
 #include <iostream>
 #include <iomanip>
 #include <chrono>
+#include <omp.h>
 
 #include "VolVolume.hpp"
 
 //#############################################################################
 /// Usage: v=w; where w is a VOL_dvector
-VOL_dvector&
-VOL_dvector::operator=(const VOL_dvector& w) {
+VOL_dvector& VOL_dvector::operator=(const VOL_dvector& w) {
    if (this == &w) 
       return *this;
    const int wsz = w.size();
@@ -37,8 +37,7 @@ VOL_dvector::operator=(const VOL_dvector& w) {
    return *this;
 }
 /// Usage v=w; where w is a double. It copies w in every entry of v
-VOL_dvector&
-VOL_dvector::operator=(const double w) {
+VOL_dvector& VOL_dvector::operator=(const double w) {
    for (int i = sz - 1; i >= 0; --i)
    v[i] = w;
    return *this;
@@ -46,8 +45,7 @@ VOL_dvector::operator=(const double w) {
 
 //#############################################################################
 /// Usage: v=w; where w is a VOL_ivector
-VOL_ivector&
-VOL_ivector::operator=(const VOL_ivector& w) {
+VOL_ivector& VOL_ivector::operator=(const VOL_ivector& w) {
    if (this == &w) return *this;
    const int wsz = w.size();
    if (wsz == 0) {
@@ -66,8 +64,7 @@ VOL_ivector::operator=(const VOL_ivector& w) {
    return *this;
 }
 /// Usage v=w; where w is an int. It copies w in every entry of v
-VOL_ivector&
-VOL_ivector::operator=(const int w) {
+VOL_ivector& VOL_ivector::operator=(const int w) {
    for (int i = sz - 1; i >= 0; --i)
    v[i] = w;
    return *this;
@@ -75,12 +72,11 @@ VOL_ivector::operator=(const int w) {
 
 //############################################################################
 /// find maximum absolute value of the primal violations
-void
-VOL_primal::find_max_viol(const VOL_dvector& dual_lb, 
-			  const VOL_dvector& dual_ub)
+void VOL_primal::find_max_viol(const VOL_dvector& dual_lb, const VOL_dvector& dual_ub)
 {
    const int nc = v.size();
    viol = 0;
+   #pragma omp parallel for reduction(max : viol) schedule(static) if(nc >= 4096)
    for ( int i = 0; i < nc; ++i ) {
      if ( (v[i] > 0.0 && dual_ub[i] != 0.0) ||
 	  (v[i] < 0.0 && dual_lb[i] != 0.0) )
@@ -91,33 +87,37 @@ VOL_primal::find_max_viol(const VOL_dvector& dual_lb,
 //############################################################################
 /// Dual step. It takes a step in the direction v
 // lcost is a member of VOL_dual
-void 
-VOL_dual::step(const double target, const double lambda,
+void  VOL_dual::step(const double target, const double lambda,
 	       const VOL_dvector& dual_lb, const VOL_dvector& dual_ub,
 	       const VOL_dvector& v) {
    const int nc = u.size();
    int i;
+   const double* const up = u.v;
+   const double* const vlb = dual_lb.v;
+   const double* const vub = dual_ub.v;
+   const double* const vp = v.v;
 
    double viol = 0.0;
-#pragma omp parallel for reduction(+ : viol) schedule(static)
+   // Below 4096 elements, OpenMP startup and reduction overhead can cost more than it saves.
+   #pragma omp parallel for reduction(+ : viol) schedule(static) if(nc >= 4096)
    for (i = 0; i < nc; ++i) {
-      if (( v[i] > 0.0 && u[i] < dual_ub[i] ) ||
-	  ( v[i] < 0.0 && u[i] > dual_lb[i] )) {
-	 viol += v[i] * v[i];
+      if ((vp[i] > 0.0 && up[i] < vub[i]) ||
+	         (vp[i] < 0.0 && up[i] > vlb[i])) {
+	      viol += vp[i] * vp[i];
       }
    }
 
    const double stp = viol == 0.0 ? 0.0 : (target - lcost) / viol * lambda;
 
-#pragma omp parallel for schedule(static)
+   #pragma omp parallel for schedule(static) if(nc >= 4096)
    for (i = 0; i < nc; ++i) {
-      if (( v[i] > 0.0 && u[i] < dual_ub[i] ) ||
-	  ( v[i] < 0.0 && u[i] > dual_lb[i] )) {
-	 u[i] += stp * v[i];
-	 if (u[i] < dual_lb[i])
-	    u[i] = dual_lb[i];
-	 else if (u[i] > dual_ub[i])
-	    u[i] = dual_ub[i];
+      if ((vp[i] > 0.0 && up[i] < vub[i]) ||
+         (vp[i] < 0.0 && up[i] > vlb[i])) {
+         u[i] += stp * vp[i];
+         if (u[i] < dual_lb[i])
+            u[i] = dual_lb[i];
+         else if (u[i] > dual_ub[i])
+            u[i] = dual_ub[i];
       }
    }
 }
@@ -130,7 +130,7 @@ VOL_dual::ascent(const VOL_dvector& v, const VOL_dvector& last_u) const
    int i;
    double asc = 0.0;
 
-#pragma omp parallel for reduction(+ : asc) schedule(static)
+   #pragma omp parallel for reduction(+ : asc) schedule(static)
    for (i = 0; i < nc; ++i)
       asc += v[i] * (u[i] - last_u[i]);
    return asc;
@@ -144,7 +144,7 @@ VOL_dual::compute_xrc(const VOL_dvector& xstar, const VOL_dvector& x,
    const int nc = x.size();
    xrc = 0;
 
-#pragma omp parallel for reduction(+ : xrc)
+   #pragma omp parallel for reduction(+ : xrc)
    for (int i = 0; i < nc; ++i) {
       xrc += rc[i] * (xstar[i] - x[i]);
    }
@@ -164,15 +164,16 @@ VOL_vh::VOL_vh(const double alpha,
    const int nc = vstar.size();
    double vv;
 
-#pragma omp parallel for reduction(+ : asc, vh, norm, hh) private(vv) schedule(static)
+   // Below 4096 elements, OpenMP startup and reduction overhead can cost more than it saves.
+   #pragma omp parallel for reduction(+ : asc, vh, norm, hh) private(vv) schedule(static) if(nc >= 4096)
    for (i = 0; i < nc; ++i) {
       const double vi = v[i];
       const double vsi = vstar[i];
       vv = alpha * vi + (1.0 - alpha) * vsi;
       if (u[i] == 0.0  &&  dual_lb[i] == 0.0  &&  vv <= 0.0)
-	 continue;
+	      continue;
       if (u[i] == 0.0  &&  dual_ub[i] == 0.0  &&  vv >= 0.0)
-	 continue;
+	      continue;
       asc  += vi * vv;
       vh   += vi * vsi;
       norm += vi * vi;
@@ -189,18 +190,19 @@ VOL_indc::VOL_indc(const VOL_dvector& dual_lb, const VOL_dvector& dual_ub,
 		   const VOL_dual& dual) {
 
    v2 = vu = vabs = asc = 0.0;
-   const VOL_dvector v = primal.v;
-   const VOL_dvector vstar = pstar.v;
-   const VOL_dvector u = dual.u;
+   const VOL_dvector& v = primal.v;
+   const VOL_dvector& vstar = pstar.v;
+   const VOL_dvector& u = dual.u;
    int i;
    const int nc = vstar.size();
 
-#pragma omp parallel for reduction(+ : v2, asc, vu, vabs) schedule(static)
+   // Below 4096 elements, OpenMP startup and reduction overhead can cost more than it saves.
+   #pragma omp parallel for reduction(+ : v2, asc, vu, vabs) schedule(static) if(nc >= 4096)
    for (i = 0; i < nc; ++i) {
       if (u[i] == 0.0  &&  dual_lb[i] == 0.0  &&  vstar[i] <= 0.0)
-	 continue;
+	      continue;
       if (u[i] == 0.0  &&  dual_ub[i] == 0.0  &&  vstar[i] >= 0.0)
-	 continue;
+	      continue;
       v2   += vstar[i] * vstar[i];
       asc  += v[i] * v[i];
       vu   -= vstar[i] * u[i];
@@ -226,98 +228,77 @@ VOL_problem::read_params(const char* filename)
    while (fgets(s, 100, infile)) {
       const int len = strlen(s) - 1;
       if (s[len] == '\n')
-	 s[len] = 0;
+	      s[len] = 0;
       std::string ss(s);
 
       if (ss.find("temp_dualfile") == 0) {
-	 int i = ss.find("=");  
-	 int i1 = ss.length()-i-1;
-	 std::string sss = ss.substr(i+1,i1);
-	 parm.temp_dualfile = new char[sss.length() + 1];
-	 memcpy(parm.temp_dualfile, sss.c_str(), sss.length());
-	 parm.temp_dualfile[sss.length()] = 0;
+         int i = ss.find("=");  
+         int i1 = ss.length()-i-1;
+         std::string sss = ss.substr(i+1,i1);
+         parm.temp_dualfile = new char[sss.length() + 1];
+         memcpy(parm.temp_dualfile, sss.c_str(), sss.length());
+         parm.temp_dualfile[sss.length()] = 0;
       } else if (ss.find("ubinit") == 0) {
-	 int i = ss.find("=");  
-	 parm.ubinit = atof(&s[i+1]);
-
+         int i = ss.find("=");  
+         parm.ubinit = atof(&s[i+1]);
       } else if (ss.find("printflag") == 0) {
-	 int i = ss.find("=");  
-	 parm.printflag = atoi(&s[i+1]);
-	 
+         int i = ss.find("=");  
+         parm.printflag = atoi(&s[i+1]);
       } else if (ss.find("printinvl") == 0) {
-	 int i = ss.find("=");  
-	 parm.printinvl = atoi(&s[i+1]);
-
+         int i = ss.find("=");  
+         parm.printinvl = atoi(&s[i+1]);
       } else if (ss.find("maxsgriters") == 0) {
-	 int i = ss.find("=");  
-	 parm.maxsgriters = atoi(&s[i+1]);
-	 
+         int i = ss.find("=");  
+         parm.maxsgriters = atoi(&s[i+1]);
       } else if (ss.find("heurinvl") == 0) {
-	 int i = ss.find("=");  
-	 parm.heurinvl = atoi(&s[i+1]);
-	 
+         int i = ss.find("=");  
+         parm.heurinvl = atoi(&s[i+1]);
       } else if (ss.find("greentestinvl") == 0) {
-	 int i = ss.find("=");  
-	 parm.greentestinvl = atoi(&s[i+1]);
-	 
+         int i = ss.find("=");  
+         parm.greentestinvl = atoi(&s[i+1]);
       } else if (ss.find("yellowtestinvl") == 0) {
-	 int i = ss.find("=");  
-	 parm.yellowtestinvl = atoi(&s[i+1]);
-	 
+         int i = ss.find("=");  
+         parm.yellowtestinvl = atoi(&s[i+1]);
       } else if (ss.find("redtestinvl") == 0) {
-	 int i = ss.find("=");  
-	 parm.redtestinvl = atoi(&s[i+1]);
-	 
+         int i = ss.find("=");  
+         parm.redtestinvl = atoi(&s[i+1]);
       } else if (ss.find("lambdainit") == 0) {
-	 int i = ss.find("=");  
-	 parm.lambdainit = atof(&s[i+1]);
-	 
+         int i = ss.find("=");  
+         parm.lambdainit = atof(&s[i+1]);
       } else if (ss.find("alphainit") == 0) {
-	 int i = ss.find("=");  
-	 parm.alphainit = atof(&s[i+1]);
-	 
+         int i = ss.find("=");  
+         parm.alphainit = atof(&s[i+1]);
       } else if (ss.find("alphamin") == 0) {
-	 int i = ss.find("=");  
-	 parm.alphamin = atof(&s[i+1]);
-	 
+         int i = ss.find("=");  
+         parm.alphamin = atof(&s[i+1]);
       } else if (ss.find("alphafactor") == 0) {
-	 int i = ss.find("=");  
-	 parm.alphafactor = atof(&s[i+1]);
-	 
+         int i = ss.find("=");  
+         parm.alphafactor = atof(&s[i+1]);
       } else if (ss.find("alphaint") == 0) {
-	 int i = ss.find("=");  
-	 parm.alphaint = atoi(&s[i+1]);
-
+         int i = ss.find("=");  
+         parm.alphaint = atoi(&s[i+1]);
       } else if (ss.find("primal_abs_precision") == 0) {
-	 int i = ss.find("=");  
-	 parm.primal_abs_precision = atof(&s[i+1]);
-
+         int i = ss.find("=");  
+         parm.primal_abs_precision = atof(&s[i+1]);
 	 //      } else if (ss.find("primal_rel_precision") == 0) {
 	 //	 int i = ss.find("=");  
 	 //	 parm.primal_rel_precision = atof(&s[i+1]);
 
       } else if (ss.find("gap_abs_precision") == 0) {
-	 int i = ss.find("=");  
-	 parm.gap_abs_precision = atof(&s[i+1]);
-
+         int i = ss.find("=");  
+         parm.gap_abs_precision = atof(&s[i+1]);
       } else if (ss.find("gap_rel_precision") == 0) {
-	 int i = ss.find("=");  
-	 parm.gap_rel_precision = atof(&s[i+1]);
-
-
+         int i = ss.find("=");  
+         parm.gap_rel_precision = atof(&s[i+1]);
       } else if (ss.find("ascent_check_invl") == 0) {
-	  int i = ss.find("=");  
-	  parm.ascent_check_invl = atoi(&s[i+1]);
-
+         int i = ss.find("=");  
+         parm.ascent_check_invl = atoi(&s[i+1]);
       } else if (ss.find("minimum_rel_ascent") == 0) {
-	  int i = ss.find("=");  
-	  parm.minimum_rel_ascent = atoi(&s[i+1]);
-
-
-
+         int i = ss.find("=");  
+         parm.minimum_rel_ascent = atoi(&s[i+1]);
       } else if (ss.find("granularity") == 0) {
-	 int i = ss.find("=");  
-	 parm.granularity = atof(&s[i+1]);
+         int i = ss.find("=");  
+         parm.granularity = atof(&s[i+1]);
       }
    }
    fclose(infile);
@@ -371,8 +352,8 @@ VOL_problem::VOL_problem(const char *filename) :
    alpha_(-1),
    lambda_(-1),
    iter_(0),
-  value(-1),
-    psize(-1),
+   value(-1),
+   psize(-1),
    dsize(-1)
 {
    set_default_parm();
@@ -388,8 +369,7 @@ VOL_problem::~VOL_problem()
 
 //######################################################################
 /// print information about the current iteration
-void
-VOL_problem::print_info(const int iter,
+void VOL_problem::print_info(const int iter,
 			const VOL_primal& primal, const VOL_primal& pstar,
 			const VOL_dual& dual)
 {
@@ -422,8 +402,7 @@ VOL_problem::print_info(const int iter,
 
 //######################################################################
 /// this is the Volume Algorithm
-int
-VOL_problem::solve(VOL_user_hooks& hooks, const bool use_preset_dual) 
+int VOL_problem::solve(VOL_user_hooks& hooks, const bool use_preset_dual) 
 {
 
    if (initialize(use_preset_dual) < 0) // initialize several parameters
@@ -454,8 +433,7 @@ VOL_problem::solve(VOL_user_hooks& hooks, const bool use_preset_dual)
       retval = hooks.compute_rc(dual.u, rc); // compute reduced costs
       if (retval < 0)  return -1;
       // solve relaxed problem
-      retval = hooks.solve_subproblem(dual.u, rc, dual.lcost,
-                  primal.x, primal.v, primal.value);
+      retval = hooks.solve_subproblem(dual.u, rc, dual.lcost, primal.x, primal.v, primal.value);
       if (retval < 0)  return -1;
    }
    // set target for the lagrangian value
@@ -470,10 +448,10 @@ VOL_problem::solve(VOL_user_hooks& hooks, const bool use_preset_dual)
    VOL_dual dlast(dual); // set dlast=dual
 
    iter_ = 0;
-    if (parm.printflag) {
-       // Print first progress line without newline to enable in-place updates
-       print_info(iter_, primal, pstar, dual);
-    }
+   if (parm.printflag) {
+      // Print first progress line without newline to enable in-place updates
+      print_info(iter_, primal, pstar, dual);
+   }
 
    VOL_swing swing;
    VOL_alpha_factor alpha_factor;
@@ -491,16 +469,15 @@ VOL_problem::solve(VOL_user_hooks& hooks, const bool use_preset_dual)
       // take a dual step
       dual.step(target, lambda_, dual_lb, dual_ub, pstar.v);
       // compute reduced costs
-      retval = hooks.compute_rc(dual.u, rc);
-      if (retval < 0)  break;
+      // retval = hooks.compute_rc(dual.u, rc);
+      // if (retval < 0)  break;
       // solve relaxed problem
-      retval = hooks.solve_subproblem(dual.u, rc, dual.lcost,
-				      primal.x, primal.v, primal.value);
+      retval = hooks.solve_subproblem(dual.u, rc, dual.lcost, primal.x, primal.v, primal.value);
       if (retval < 0)  break;
       dual.compute_xrc(pstar.x, primal.x, rc); // compute xrc
 
       if (dual.lcost > dstar.lcost) { 
-	dstar = dual; // update dstar
+	      dstar = dual; // update dstar
       }
       // check if target should be updated
       target = readjust_target(target, dstar.lcost);
@@ -513,83 +490,81 @@ VOL_problem::solve(VOL_user_hooks& hooks, const bool use_preset_dual)
       lambda_ *= swing.lfactor(parm, lambda_, iter_);
 
       if (iter_ % parm.alphaint == 0) { // change alpha if needed
-   	 const double fact = alpha_factor.factor(parm, dstar.lcost, alpha_);
-   	 if (fact != 1.0 && (parm.printflag & 2)) {
-    	   std::cout << "\rdecreasing alpha to " << std::fixed << std::setprecision(6)
-              << (alpha_ * fact) << "                                         " << std::flush;
-   	 }
-   	 alpha_ *= fact;
+         const double fact = alpha_factor.factor(parm, dstar.lcost, alpha_);
+         if (fact != 1.0 && (parm.printflag & 2)) {
+            std::cout << "\rdecreasing alpha to " << std::fixed << std::setprecision(6)
+               << (alpha_ * fact) << "                                         " << std::flush;
+         }
+         alpha_ *= fact;
       }
       // convex combination with new primal vector
       pstar.cc(power_heur(primal, pstar, dual), primal);
       pstar.find_max_viol(dual_lb, dual_ub); // find maximum violation of pstar
 
       if (swing.rd)
-	dual = dstar; // if there is no improvement reset dual=dstar
+	      dual = dstar; // if there is no improvement reset dual=dstar
 
       if ((iter_ % parm.printinvl == 0) && parm.printflag) { // printing iteration information
-   	 print_info(iter_, primal, pstar, dual);
-   	 if (parm.printflag & 4) swing.print();
+         print_info(iter_, primal, pstar, dual);
+         if (parm.printflag & 4) swing.print();
       }
 
       if (iter_ % parm.heurinvl == 0) { // run primal heuristic
-	 double ub = DBL_MAX;
-	 retval = hooks.heuristics(*this, pstar.x, ub);
-	 if (retval < 0)  break;
-	 if (ub < best_ub)
-	    best_ub = ub;
+         double ub = DBL_MAX;
+         retval = hooks.heuristics(*this, pstar.x, ub);
+         if (retval < 0)  break;
+         if (ub < best_ub)
+            best_ub = ub;
       }
       // save dual solution every 500 iterations
       if (iter_ % 500 == 0 && parm.temp_dualfile != 0) {
-	 FILE* outfile = fopen(parm.temp_dualfile, "w");
-	 const VOL_dvector& u = dstar.u;
-	 const int m = u.size();
-	 for (int i = 0; i < m; ++i) {
-	    fprintf(outfile, "%i %f\n", i+1, u[i]);
-	 }
-	 fclose(outfile);
+         FILE* outfile = fopen(parm.temp_dualfile, "w");
+         const VOL_dvector& u = dstar.u;
+         const int m = u.size();
+         for (int i = 0; i < m; ++i) {
+            fprintf(outfile, "%i %f\n", i+1, u[i]);
+         }
+	      fclose(outfile);
       }
 
       // test terminating criteria
-      const bool primal_feas = 
-	(pstar.viol < parm.primal_abs_precision);
+      const bool primal_feas = (pstar.viol < parm.primal_abs_precision);
       //const double gap = VolAbs(pstar.value - dstar.lcost); 
       const double gap = pstar.value - dstar.lcost;
-      const bool small_gap = VolAbs(dstar.lcost) < 0.0001 ?
-	(gap < parm.gap_abs_precision) :
-	( (gap < parm.gap_abs_precision) || 
-	  (gap/VolAbs(dstar.lcost) < parm.gap_rel_precision) );
+      const bool small_gap = VolAbs(dstar.lcost) < 0.0001 ? 
+                           (gap < parm.gap_abs_precision) :
+	                        ((gap < parm.gap_abs_precision) || 
+	                         (gap/VolAbs(dstar.lcost) < parm.gap_rel_precision));
       
       // test optimality
       if (primal_feas && small_gap){
    	if (parm.printflag & 2) std::cout << "\rsmall lp gap                                         " << std::flush;
-	break;
+	      break;
       }
 
       // test proving integer optimality
       if (best_ub - dstar.lcost < parm.granularity){
-   	if (parm.printflag & 2) std::cout << "\rsmall ip gap                                         " << std::flush;
-	break;
+   	   if (parm.printflag & 2) std::cout << "\rsmall ip gap                                         " << std::flush;
+	      break;
       }
 
       // test for non-improvement
       const int k = iter_ % parm.ascent_check_invl;
       if (iter_ > ascent_first_check) {
-	 if (dstar.lcost - lcost_sequence[k] <
-	     VolAbs(lcost_sequence[k]) * parm.minimum_rel_ascent){
-	   if (parm.printflag & 2) std::cout << "\rsmall improvement                                    " << std::flush;
-	   break;
-	 }
+         if (dstar.lcost - lcost_sequence[k] < VolAbs(lcost_sequence[k]) * parm.minimum_rel_ascent){
+            if (parm.printflag & 2) std::cout << "\rsmall improvement                                    " << std::flush;
+            break;
+         }
       }
       lcost_sequence[k] = dstar.lcost;
    }
    delete[] lcost_sequence;
 
-    if (parm.printflag) {
-       // Final progress update, then newline to finalize the line
-       print_info(iter_, primal, pstar, dual);
-       std::cout << std::flush;
-    }
+   if (parm.printflag) {
+      // Final progress update, then newline to finalize the line
+      print_info(iter_, primal, pstar, dual);
+      std::cout << std::flush;
+   }
    // set solution to return
    value = dstar.lcost;
    psol = pstar.x;
@@ -601,13 +576,12 @@ VOL_problem::solve(VOL_user_hooks& hooks, const bool use_preset_dual)
 
 
 /// A function to initialize a few variables
-int
-VOL_problem::initialize(const bool use_preset_dual) {
-  // setting bounds for dual variables
+int VOL_problem::initialize(const bool use_preset_dual) {
+   // setting bounds for dual variables
    if (dual_lb.size() > 0) {
       if (dual_lb.size() != dsize) {
-	 printf("size inconsistent (dual_lb)\n");
-	 return -1;
+         printf("size inconsistent (dual_lb)\n");
+         return -1;
       }
    } else {
       // fill it with -infinity
@@ -617,8 +591,8 @@ VOL_problem::initialize(const bool use_preset_dual) {
 
    if (dual_ub.size() > 0) {
       if (dual_ub.size() != dsize) {
-	 printf("size inconsistent (dual_ub)\n");
-	 return -1;
+         printf("size inconsistent (dual_ub)\n");
+         return -1;
       }
    } else {
       // fill it with infinity
@@ -631,8 +605,8 @@ VOL_problem::initialize(const bool use_preset_dual) {
    // check if there is an initial dual solution
    if (use_preset_dual) {
       if (dsol.size() != dsize) {
-	 printf("size inconsistent (dsol)\n");
-	 return -1;
+         printf("size inconsistent (dsol)\n");
+         return -1;
       }
    } else {
       dsol.clear();
@@ -645,21 +619,20 @@ VOL_problem::initialize(const bool use_preset_dual) {
 
 
 /// Here we increase the target once we get within 5% of it
-double
-VOL_problem::readjust_target(const double oldtarget, const double lcost) const
+double VOL_problem::readjust_target(const double oldtarget, const double lcost) const
 {
    double target = oldtarget;
    if (lcost >= target - VolAbs(target) * 0.05) {
       if (VolAbs(lcost) < 10.0) {
-	 target = 10.0;
+	      target = 10.0;
       } else { 
-	 target += 0.025 * VolAbs(target);
-	 target = VolMax(target, lcost + 0.05 * VolAbs(lcost));
+         target += 0.025 * VolAbs(target);
+         target = VolMax(target, lcost + 0.05 * VolAbs(lcost));
       }
       if (target != oldtarget && (parm.printflag & 2)) {
-   	 std::cout << "\rreadjusting target: new target = " << std::fixed << std::setprecision(6)
-                      << target << "                              " << std::flush;
-         }
+         std::cout << "\rreadjusting target: new target = " << std::fixed << std::setprecision(6)
+                        << target << "                              " << std::flush;
+      }
    }
    return target;
 }
@@ -669,9 +642,7 @@ VOL_problem::readjust_target(const double oldtarget, const double lcost) const
     IN:  alpha, primal, pstar, dual
     OUT: pstar = alpha_fb * pstar + (1 - alpha_fb) * primal
 */
-double
-VOL_problem::power_heur(const VOL_primal& primal, const VOL_primal& pstar,
-			const VOL_dual& dual) const 
+double VOL_problem::power_heur(const VOL_primal& primal, const VOL_primal& pstar, const VOL_dual& dual) const 
 {
    const double alpha = alpha_;
    

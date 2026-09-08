@@ -158,63 +158,76 @@ def find_violated_subgraph_constraints_relax_x(model, x_sol, e_sol, subgraphs):
                         result2.append((k, i, j, u))
     return (result1, result2)
                 
-def find_bender_cuts(master_model, x_sol, e_sol, subgraphs):
+def find_bender_cuts(env, master_model, x_sol, e_sol, subgraphs):
     # solve a subproblem
     # create a model for subproblem
     
-    sub_model = gp.Model(name="Benders_subproblem")
+    sub_model = gp.Model(env=env)
     M = list(range(master_model._n))
     V = list(range(master_model._n))
-    #  y_iujv
-            
-    y_keys = [
-            (i, u, j, v)
-                for i in V
-                for u in M
-                for j in V
-                for v in M
-                if i < j and u != v]
     
-    y_var = sub_model.addVars(y_keys, vtype=GRB.CONTINUOUS, lb=0, name="y")
-    y = {}
-    for (i,u,j,v) in y_keys:
-        y[i,u,j,v] = y_var[i,u,j,v]
-        y[j,v,i,u] = y_var[i,u,j,v]  # Symmetry: y[i,u,j,v] = y[j,v,i,u]
-        
-    # sum_{(u,v) in G_k} y[i,u,j,v] == e_sol[k,i,j] for all k,i,j
+    iu_pos = [(i, u) for i in V for u in M if x_sol.get((i, u), 0) > 1e-6]
+    
+    #  y_iujv >= 0 for all i,u in iu_pos, for all j,v in iu_pos, i<j and u!=v
+    y_keys = [
+        (i, u, j, v) 
+        for (i, u) in iu_pos
+        for (j, v) in iu_pos 
+        if i < j and u != v
+        # and np.sum(e_sol.get((k, i, j), 0) for k in subgraphs) > 1e-6
+    ]
+    y_vars = sub_model.addVars(y_keys, vtype=GRB.CONTINUOUS, name="y", lb=0)
+    # print(f"Subproblem has {len(y_vars)} y variables.")
+    #  y_jviu = y_iujv
+    y = {key: var for key, var in y_vars.items()}
+    y.update({(j, v, i, u): var for (i, u, j, v), var in y_vars.items()})
+    
+    # sum_{(u,v) in G_k} y_iujv == e_kij for all i,j in V, i!=j, for all k
     for k, (f_k, G_k, G_n_k) in subgraphs.items():
         for i in V:
             for j in V:
-                if i != j:
-                    sub_model.addConstr(
-                        gp.quicksum(y[i,u,j,v] for (u,v) in G_k) == e_sol[k, i, j],
-                        name=f"benders_sub_e_{k}_{i}_{j}"
-                    )
-    # sum_{j} y[i,u,j,v] = x_sol[i,u] for all i,u,v
-    for i in V:
-        for u in M:
-            for v in M:
-                if u != v:
-                    sub_model.addConstr(
-                        gp.quicksum(y[i,u,j,v] for j in V if j != i) == x_sol[i, u],
-                        name=f"benders_sub_iuv_{i}_{u}_{v}"
-                    )
-    # sum_{v} y[i,u,j,v] = x_sol[i,u] for all i,u,j
-    for i in V:
-        for u in M:
-            for j in V:
-                if j != i:
-                    sub_model.addConstr(
-                        gp.quicksum(y[i,u,j,v] for v in M if v != u) == x_sol[i, u],
-                        name=f"benders_sub_iuj_{i}_{u}_{j}"
-                    )
+                if i == j:
+                    continue
+                y_sum = gp.quicksum(
+                    y.get((i, u, j, v), 0) 
+                    for (u, v) in G_k 
+                    if (i, u) in iu_pos and (j, v) in iu_pos
+                )
+                sub_model.addConstr(
+                    y_sum == e_sol.get((k, i, j), 0),
+                    name=f"benders_sub_e_{k}_{i}_{j}"
+                )
+    
+    # sum_j y_iujv == x_iu for all i,u in iu_pos, for all v in M
+    for (i, u) in iu_pos:
+        for v in M:
+            y_sum = gp.quicksum(
+                y.get((i, u, j, v), 0) 
+                for j in V 
+                if (j, v) in iu_pos
+            )
+            sub_model.addConstr(
+                y_sum == x_sol.get((i, u), 0),
+                name=f"benders_sub_iuv_{i}_{u}_{v}"
+            )
+            
+    # sum_v y_iujv == x_iu for all i,u in iu_pos, for all j in V
+    for (i, u) in iu_pos:
+        for j in V:
+            if i == j:
+                continue
+            y_sum = gp.quicksum(
+                y.get((i, u, j, v), 0) 
+                for v in M 
+                if (j, v) in iu_pos
+            )
+            sub_model.addConstr(
+                y_sum == x_sol.get((i, u), 0),
+                name=f"benders_sub_iuj_{i}_{u}_{j}"
+            )
+    
     # objective: minimize sum_{i,j,u,v} D[i,j] * F[u,v] * y[i,u,j,v]
-    sub_model.setObjective(0.0)
-    # sub_model.setObjective(
-    #     gp.quicksum(master_model._problem.D[i, j] * master_model._problem.F[u, v] * y[i, u, j, v] for i in V for j in V for u in M for v in M if i != j and u != v),
-    #     GRB.MINIMIZE
-    # )
-    # sub_model.setParam("Method", 0)
+    sub_model.setObjective(0.0, GRB.MINIMIZE)
     sub_model.Params.LogToConsole = 0
     sub_model.Params.Presolve = 0
     sub_model.Params.InfUnbdInfo = 1
@@ -222,11 +235,8 @@ def find_bender_cuts(master_model, x_sol, e_sol, subgraphs):
     sub_model.optimize()
     
     result ={}
-    alpha = {}
-    beta = {}
-    gamma = {}
     # if status is infeasible, get the Dual farkas ray and generate a cut
-    if sub_model.Status == GRB.INFEASIBLE:
+    if sub_model.status == GRB.INFEASIBLE:
         for c in sub_model.getConstrs():
             if abs(c.FarkasDual) > 1e-8:
                 # print(c.ConstrName, c.FarkasDual)
@@ -236,54 +246,21 @@ def find_bender_cuts(master_model, x_sol, e_sol, subgraphs):
                     i = int(i)
                     j = int(j)
                     e_k_ij = master_model._e.get((k, i, j))
-                    # print((e_k_ij, c.FarkasDual))
                     result[e_k_ij] = result.get(e_k_ij, 0) + c.FarkasDual
-                    gamma[k, i, j] = c.FarkasDual
                 if "benders_sub_iuv_" in c.ConstrName:
                     _,_,_, i, u, v = c.ConstrName.split("_")
                     i = int(i)
                     u = int(u)
                     v = int(v)
                     x_i_u = master_model._x[i, u]
-                    # print((x_i_u, c.FarkasDual))
                     result[x_i_u] = result.get(x_i_u, 0) + c.FarkasDual
-                    alpha[i, u, v] = c.FarkasDual
                 if "benders_sub_iuj_" in c.ConstrName:
                     _,_,_, i, u, j = c.ConstrName.split("_")
                     i = int(i)
                     u = int(u)
                     j = int(j)
                     x_i_u = master_model._x[i, u]
-                    # print((x_i_u, c.FarkasDual))
                     result[x_i_u] = result.get(x_i_u, 0) + c.FarkasDual
-                    beta[i, u, j] = c.FarkasDual
-        # add the cut to the master model
-        # master_model.addConstr(
-        #     gp.quicksum(key * val for key, val in result.items()) <= 0
-        # )
-        # master_model.update()
-        
-    # test Farkas ray yTA= 0
-    # bTy = 0
-    # for (i,u,j,v), var in y.items():
-    #     aTy = 0
-    #     bTy += alpha.get((i, u, v), 0)*x_sol.get((i, u), 0) + alpha.get((j, v, u), 0)*x_sol.get((j, v), 0)
-    #     bTy += beta.get((i, u, j), 0)*x_sol.get((i, u), 0) + beta.get((j, v, i), 0)*x_sol.get((j, v), 0)
-    #     for k, (f_k, G_k, G_n_k) in subgraphs.items():
-    #         if (u,v) in G_k:
-    #             aTy += gamma.get((k, i, j), 0)
-    #             bTy += e_sol.get((k, i, j), 0)*gamma.get((k, i, j), 0)
-    #         if (v,u) in G_k:
-    #             aTy += gamma.get((k, j, i), 0)
-    #             bTy += e_sol.get((k, j, i), 0)*gamma.get((k, j, i), 0)
-                
-    #     aTy += alpha.get((i, u, v), 0) + alpha.get((j, v, u), 0)
-    #     aTy += beta.get((i, u, j), 0) + beta.get((j, v, i), 0)
-        
-    #     if aTy < -1e-6:
-    #         print(f"Farkas ray violation for y[{i},{u},{j},{v}]: {aTy}")
-    # if bTy > 1e-6:
-    #     print(f"Farkas ray check: bTy={bTy}")
     return result
 
 def sfdcallback(model, where):
@@ -299,10 +276,9 @@ def sfdcallback(model, where):
             #     model._total_added_lazy += 1
             
             # find benders cuts and add them as lazy constraints
-            benders_cuts = find_bender_cuts(model, x_sol, e_sol, model._subgraphs)
-            for key, val in benders_cuts.items():
-                model.cbLazy(key * val <= 0)
-                model._total_added_benders += 1
+            benders_cuts = find_bender_cuts(model._subEnv, model, x_sol, e_sol, model._subgraphs)
+            model.cbLazy(gp.quicksum(key * val for key, val in benders_cuts.items()) <= 0)
+            model._total_added_benders += 1
             
     elif where == GRB.Callback.MIPNODE:
         if model._use_cuts:
@@ -314,10 +290,10 @@ def sfdcallback(model, where):
                 e_sol = model.cbGetNodeRel(model._e)
                 
                 # find benders cuts and add them as cuts
-                benders_cuts = find_bender_cuts(model, x_sol, e_sol, model._subgraphs)
-                for key, val in benders_cuts.items():
-                    model.cbCut(key * val <= 0)
-                    model._total_added_benders += 1
+                benders_cuts = find_bender_cuts(model._subEnv, model, x_sol, e_sol, model._subgraphs)
+                # sum(key * val for key, val in benders_cuts.items()) <= 0
+                model.cbCut(gp.quicksum(key * val for key, val in benders_cuts.items()) <= 0)
+                model._total_added_benders += 1
 
 class SFDGurobiSolver:
     """
@@ -348,6 +324,7 @@ class SFDGurobiSolver:
         self.decomposition = config.get("decomposition", "value_layer")
         self.use_cuts = config.get("use_cuts", True)
         self.use_lazy_constraints = config.get("use_lazy_constraints", False)
+        self.use_constr = config.get("use_constr", 1)
         self.time_limit = config.get("time_limit", 3600)
         self.threads = config.get("threads", 8)
         self.log_output = config.get("log_output", False)
@@ -470,12 +447,20 @@ class SFDGurobiSolver:
                         for j in V:
                             if (k, i, j) in e:
                                 for u in G_n_k:
-                                    model.addConstr(
-                                        e[k, i, j] >= -1 + x[i, u] + gp.quicksum(
-                                            x[j, v] for v in G_n_k if (u, v) in G_k
-                                        ),
-                                        name=f"edge_link_{i}_{j}_{u}_{k}"
-                                    )
+                                    if self.use_constr == 1 or self.use_constr == 3:
+                                        model.addConstr(
+                                            e[k, i, j] >= -1 + x[i, u] + gp.quicksum(
+                                                x[j, v] for v in G_n_k if (u, v) in G_k
+                                            ),
+                                            name=f"edge_link_{i}_{j}_{u}_{k}"
+                                        )
+                                    if self.use_constr == 2 or self.use_constr == 3:
+                                        model.addConstr(
+                                            e[k, i, j] <= 1 - x[i, u] + gp.quicksum(
+                                                x[j, v] for v in G_n_k if (u, v) in G_k
+                                            ),
+                                            name=f"edge_link_{i}_{j}_{u}_{k}"
+                                        )
                                     total_subgraph_constraints += 1
             print(f"Added {total_subgraph_constraints} subgraph constraints directly to the model.")
 
@@ -609,6 +594,10 @@ class SFDGurobiSolver:
         # print("=================================================")
         
         if self.use_lazy_constraints or self.use_cuts:
+            subEnv = gp.Env(empty=True)
+            subEnv.setParam('OutputFlag', 0)
+            subEnv.start()
+            model._subEnv = subEnv
             model._x = x
             model._e = e
             model._use_lazy_constraints = self.use_lazy_constraints

@@ -36,10 +36,10 @@ int main(int argc, char* argv[]) {
     } else {
         std::cout << "No config file provided, using default settings.\n";
     }
-    std::cout << "Max iterations: " << cfg.max_iterations << "\n";
-    std::cout << "Epsilon: " << cfg.eps << "\n";
-    std::cout << "Add column strategy: " << cfg.add_column_strategy << "\n";
-    std::cout << "Log output: " << (cfg.log_output ? "true" : "false") << "\n";
+    // std::cout << "Max iterations: " << cfg.max_iterations << "\n";
+    // std::cout << "Epsilon: " << cfg.eps << "\n";
+    // std::cout << "Add column strategy: " << cfg.add_column_strategy << "\n";
+    // std::cout << "Log output: " << (cfg.log_output ? "true" : "false") << "\n";
 
     // If config provided, load it
     if (!config_path.empty()) {
@@ -58,7 +58,29 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    Problem problem = Problem::fromQAPLIB(instance_path);
+    std::string auto_fixed_file;
+    std::string base_name = instance_path;
+    size_t dot_pos = base_name.find_last_of(".");
+    if (dot_pos != std::string::npos) {
+        std::string name_without_ext = base_name.substr(0, dot_pos);
+        // Try several naming conventions
+        std::vector<std::string> candidates = {
+            name_without_ext + "_assignments.txt",
+            name_without_ext + ".fixed",
+            name_without_ext + "_fixed.txt"
+        };
+        for (const auto& candidate : candidates) {
+            std::ifstream test(candidate);
+            if (test.good()) {
+                auto_fixed_file = candidate;
+                std::cout << "Auto-detected fixed assignments file: " << auto_fixed_file << std::endl;
+                break;
+            }
+        }
+    }
+    
+    // Read QAP instance (with auto-detected fixed assignments if found)
+    auto problem = Problem::fromAuto(instance_path, auto_fixed_file);
 
     ColumnGenSolver solver(cfg);
     Solution solution = solver.solve(problem, instance_path);

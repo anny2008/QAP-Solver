@@ -153,7 +153,7 @@ void IncrementalRMP::ensureAllRows() {
     for (int i : V) for (int u : M) for (int v : M) if (u != v) ensureC5(i,u,v);
 
     // compute and print out the number of rows of each type for debugging
-    std::cout << "[RMP] Total rows after ensureAllRows: " << c1_map.size() + c2_map.size() + c3_map.size() + c4_map.size() + c5_map.size() << " (C1: " << c1_map.size() << ", C2: " << c2_map.size() << ", C3: " << c3_map.size() << ", C4: " << c4_map.size() << ", C5: " << c5_map.size() << ")\n";
+    if(!quiet) std::cout << "[RMP] Total rows after ensureAllRows: " << c1_map.size() + c2_map.size() + c3_map.size() + c4_map.size() + c5_map.size() << " (C1: " << c1_map.size() << ", C2: " << c2_map.size() << ", C3: " << c3_map.size() << ", C4: " << c4_map.size() << ", C5: " << c5_map.size() << ")\n";
 }
 
 void IncrementalRMP::addAllTplusTminus()
@@ -163,7 +163,9 @@ void IncrementalRMP::addAllTplusTminus()
     // Helper lambda to attach t+ and t- to every row in a rowmap
     auto attach_tp_tm = [&](auto& rowmap,
                             auto& tplus_map,
-                            auto& tminus_map)
+                            auto& tminus_map,
+                            std::string name
+                        )
     {
         for (auto& kv : rowmap)
         {
@@ -173,8 +175,8 @@ void IncrementalRMP::addAllTplusTminus()
             // Only add if not already present
             if (!tplus_map.count(key))
             {
-                IloNumVar tp(env, 0.0, IloInfinity, ILOFLOAT);
-                IloNumVar tm(env, 0.0, IloInfinity, ILOFLOAT);
+                IloNumVar tp(env, 0.0, IloInfinity, ILOFLOAT, ("t_plus_" + name + "_" + std::to_string(key.a) + "_" + std::to_string(key.b)).c_str());
+                IloNumVar tm(env, 0.0, IloInfinity, ILOFLOAT, ("t_minus_" + name + "_" + std::to_string(key.a) + "_" + std::to_string(key.b)).c_str());
 
                 _model.add(tp);
                 _model.add(tm);
@@ -227,17 +229,17 @@ void IncrementalRMP::addAllTplusTminus()
     // Add t+/t- to every family of constraints
     // attach_tm(c1_map, t_minus_C1);
     // attach_tp(c1_map, t_plus_C1);
-    attach_tp_tm(c1_map, t_plus_C1, t_minus_C1);
-    attach_tp_tm(c2_map, t_plus_C2, t_minus_C2);
-    attach_tp_tm(c3_map, t_plus_C3, t_minus_C3);
-    attach_tp_tm(c4_map, t_plus_C4, t_minus_C4);
+    attach_tp_tm(c1_map, t_plus_C1, t_minus_C1, "alpha");
+    attach_tp_tm(c2_map, t_plus_C2, t_minus_C2, "beta");
+    attach_tp_tm(c3_map, t_plus_C3, t_minus_C3, "gamma");
+    attach_tp_tm(c4_map, t_plus_C4, t_minus_C4, "eta");
     // attach_tm(c3_map, t_minus_C3);
     // attach_tp(c3_map, t_plus_C3);
     // attach_tm(c4_map, t_minus_C4);
     // attach_tp(c4_map, t_plus_C4);
-    attach_tp_tm(c5_map, t_plus_C5, t_minus_C5);
+    attach_tp_tm(c5_map, t_plus_C5, t_minus_C5, "mu");
 
-    std::cout << "[RMP] addAllTplusTminus(): attached t+/t- to "
+    if(!quiet) std::cout << "[RMP] addAllTplusTminus(): attached t+/t- to "
               << (c1_map.size() + c2_map.size() + c3_map.size() +
                   c4_map.size() + c5_map.size())
               << " constraints." << std::endl;
@@ -296,12 +298,13 @@ IloNumVar IncrementalRMP::addColumn(int i, int u, int j, int v) {
     col += ensureC5(cj,cv,cu)(1.0);
     
     // Create variable with column (column constructor: col, lb, ub, type, name)
-    IloNumVar y(col, 0.0, IloInfinity, ILOFLOAT);
+    IloNumVar y(col, 0.0, IloInfinity, ILOFLOAT, yName(can).c_str());
     // add y to model and col end
     _model.add(y);
     col.end();
     y_index.emplace(can, y);
     Omega.insert(can);
+    // std::cout << "[RMP] Added column y(" << ci << "," << cu << "," << cj << "," << cv << ") with cost " << cost << " and current total columns " << Omega.size() << std::endl;
     return y;
 }
 
@@ -313,6 +316,7 @@ void IncrementalRMP::addColumns(const std::vector<QuadKey>& columns) {
 
 bool IncrementalRMP::solve() {
     _cplex.setOut(quiet ? _env.getNullStream() : std::cout);
+    // print out the lp file for debugging
     return _cplex.solve();
 }
 
@@ -385,8 +389,8 @@ void IncrementalRMP::updateStabilizationCoefficients(
         sum_phi_iujv += c;
     }
     auto delta_column_cost = (delta_column_cost_min + delta_column_cost_max) / 2.0;
-    // std::cout << std::fixed << std::setprecision(6);
-    // std::cout << "[RMP] updateStabilizationCoefficients: delta_i = " << delta_column_cost << std::endl;
+    // if(!quiet) std::cout << std::fixed << std::setprecision(6);
+    // if(!quiet) std::cout << "[RMP] updateStabilizationCoefficients: delta_i = " << delta_column_cost << std::endl;
     // -----------------------------
     // C1 : dual alpha(i,j)
     // -----------------------------
@@ -652,7 +656,7 @@ bool IncrementalRMP::verifySolution(const std::unordered_map<QuadKey,double,Quad
         std::cerr << "Warning: calculated objective value " << objval << " differs from reported objective value " << reported_objval << "\n";
         result = false;
     } else {
-        std::cout << "Objective value verified: " << objval << "\n";
+        if(!quiet) std::cout << "Objective value verified: " << objval << "\n";
     }
     // check fixed assignments
     for (const auto& kv : xvals) {
@@ -710,9 +714,9 @@ void IncrementalRMP::checkLastAddedColumnBasis() {
     for (int i = 0; i < vars.getSize(); i++) {
         if (varBasis[i] == IloCplex::Basic) {
             countAddedColumnsInBasis++;
-            std::cout << "Column " << yName(lastIterationAddedColumn) << " is in the basis. The number of column added enter basis" << countAddedColumnsInBasis << "\n";
+            if(!quiet) std::cout << "Column " << yName(lastIterationAddedColumn) << " is in the basis. The number of column added enter basis" << countAddedColumnsInBasis << "\n";
         } else {
-            std::cout << "Column " << yName(lastIterationAddedColumn) << " is not in the basis.\n";
+            if(!quiet) std::cout << "Column " << yName(lastIterationAddedColumn) << " is not in the basis.\n";
         }
     }
 }
@@ -754,11 +758,11 @@ void IncrementalRMP::checkBasicStatusChange() {
                 countEnteredBasis++;
             }
         }
-        std::cout << "Columns that entered the basis: " << countEnteredBasis << "\n";
-        std::cout << "Columns that entered the basis with non-zero value: " << countEnteredBasisNoneZero << "\n";
-        std::cout << "Columns that left the basis: " << countLeftBasis << "\n";
-        std::cout << "Columns that remained unchanged status: " << countUnchanged << "\n";
-        std::cout << "Columns in the basis: " << countBasis << "\n";
+        if(!quiet) std::cout << "Columns that entered the basis: " << countEnteredBasis << "\n";
+        if(!quiet) std::cout << "Columns that entered the basis with non-zero value: " << countEnteredBasisNoneZero << "\n";
+        if(!quiet) std::cout << "Columns that left the basis: " << countLeftBasis << "\n";
+        if(!quiet) std::cout << "Columns that remained unchanged status: " << countUnchanged << "\n";
+        if(!quiet) std::cout << "Columns in the basis: " << countBasis << "\n";
     }
         // Update lastIterBasicStatus for the next iteration
     lastIterBasicStatus.clear();

@@ -1,0 +1,14 @@
+{
+  "solver": "sdp_bundle",
+  "formulation": "formulation2",
+  "instance": "data/QAPLIB/tai12a.dat",
+  "iteration_limit": 10000000,
+  "eigen_solver": "full",
+  "time_limit": 7200,
+  "mSS": 0.3,
+  "threads": 12,
+  "log_output": true,
+  "save_dual": "",
+  "output_path":"",
+  "description": "SDP Bundle Algorithm solver for QAP"
+}

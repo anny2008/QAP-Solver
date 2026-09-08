@@ -1,7 +1,7 @@
 {
   "solver": "admm",
   "formulation": "sdp",
-  "instance": "/home/local.isima.fr/antran/UFF/QAP-Solver/data/M/instance_02_LEFT.txt",
+  "instance": "data/QAPLIB/tai12a.dat",
   "time_limit": 6040800,
   "threads": 8,
   "log_output": true,

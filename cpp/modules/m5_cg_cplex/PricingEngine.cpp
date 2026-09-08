@@ -78,6 +78,7 @@ PricingEngine::Result runPricing(const PricingEngine& self, const RMPType& rmp, 
         rc -= rmp.getRowDualC4(j,v,i);
         rc -= rmp.getRowDualC5(i,u,v);
         rc -= rmp.getRowDualC5(j,v,u);
+        R.all_rcs[QuadKey{i,u,j,v}] = rc; // store for debugging
         return rc;
     };
 

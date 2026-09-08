@@ -1,0 +1,18 @@
+{
+  "solver": "sfd",
+  "formulation": "sfd",
+  "instance": "/home/local.isima.fr/antran/UFF/QAP_New_formulation/data/QAPLIB/nug12.dat",
+  "decomposition": "value_only",
+  "matrix_for_decomposition": "distance",
+  "use_lazy_constraints": false,
+  "use_cuts": false,
+  "use_constr": 1,
+  "time_limit": 6040800,
+  "threads": 100,
+  "log_output": true,
+  "is_relax": false,
+  "lpmethod": "auto",
+  "binary_variables": "x",
+  "description": "Subgraph Flow Decomposition solver for QAP using SDP Mosek Python",
+  "warmstart": ""
+}

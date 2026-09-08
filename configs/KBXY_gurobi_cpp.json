@@ -1,0 +1,11 @@
+{
+  "solver": "KBXY_gurobi_cpp",
+  "formulation": "KBXY",
+  "instance": "/home/local.isima.fr/antran/UFF/QAP-Solver/data/M/instance_01_2_LEFT.txt",
+  "time_limit": 6040800,
+  "threads": 100,
+  "log_output": true,
+  "is_relax": true,
+  "lpmethod": "auto",
+  "warmstart": ""
+}

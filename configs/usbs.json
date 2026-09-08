@@ -1,0 +1,19 @@
+{
+  "solver": "usbs",
+  "formulation": "zhao",
+  "instance": "/home/local.isima.fr/antran/UFF/QAP_New_formulation/data/QAPLIB/tai150b.dat",
+  "max_iters": 10000000,
+  "max_time": 3600,
+  "trace_factor": 2.0,
+  "rho": 0.01,
+  "beta": 0.25,
+  "k_curr": 2,
+  "k_past": 0,
+  "obj_gap_eps": 1e-07,
+  "infeas_gap_eps": 1e-07,
+  "max_infeas_eps": 1e-07,
+  "subprob_max_iters": 100,
+  "subprob_eps": 1e-7,
+  "lanczos_max_restarts": 10,
+  "warm_start_strategy": "none"
+}

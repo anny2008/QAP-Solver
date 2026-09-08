@@ -175,24 +175,6 @@ class M5CPLEXSolver:
                     ctname=f"assign_ju_{j}_{u}",
                 )
         
-        # # sum_{j: j > i, v: v != u} y_iujv <= x_iu for all i,u
-        # for i in V:
-        #     for u in M:
-        #         j_set = [j for j in V if j > i]
-        #         model.add_constraint(
-        #             model.sum(y[i, u, j, v] for j in j_set for v in M if v != u) <= len(j_set)*x[i, u],
-        #             ctname=f"link_iu_{i}_{u}",
-        #         )
-                
-        # # sum_{j: j < i, v: v != u} y_juiv == x_iu for all i,u
-        # for i in V:
-        #     for u in M:
-        #         j_set = [j for j in V if j < i]
-        #         model.add_constraint(
-        #             model.sum(y[j, v, i, u] for j in j_set for v in M if v != u) <= len(j_set)*x[i, u],
-        #             ctname=f"link_iu_eq_{i}_{u}",
-        #         )
-                
         # sum_{v} y_iujv <= x_iu for all i,u,j: i < j
         for i in V:
             for u in M:
@@ -233,7 +215,7 @@ class M5CPLEXSolver:
         # Configure solver parameters
         model.parameters.lpmethod = 2  # Use dual simplex
 
-        return model, y, x
+        return model, x, y
 
     def solve(
         self,
@@ -255,7 +237,7 @@ class M5CPLEXSolver:
         start_time = time.time()
 
         # Create model
-        model, y, x = self._create_model(problem, fixed_variables)
+        model, x, y = self._create_model(problem, fixed_variables)
 
         # Add warm-start if provided
         # docplex's add_mip_start requires a SolveSolution object
@@ -272,38 +254,88 @@ class M5CPLEXSolver:
             model.add_mip_start(ws_solution)
 
         # Solve
+        # model.parameters.lpmethod = 2  # Use dual simplex
         solution = model.solve(log_output=self.log_output)
         cpx = model.get_cplex()
         
         elapsed_time = time.time() - start_time
-        solution = cpx.solution
+        # solution = cpx.solution
         # Extract results
         if solution:
+            # count positive y variables
+            num_y = sum(1 for var in y.values() if solution.get_value(var) > 1e-5)
+            print(f"Number of positive y variables: {num_y}: {num_y / len(y) * 100:.2f}%")
             # Extract assignment from x variables
             assignment = []
             is_feasible = True
-            # for i in range(problem.n):
-            #     best_u = -1
-            #     best_val = -1
-            #     for u in range(problem.n):
-            #         val = solution.get_value(x[i, u])
-            #         if val > best_val:
-            #             best_val = val
-            #             best_u = u
+            for i in range(problem.n):
+                best_u = -1
+                best_val = -1
+                for u in range(problem.n):
+                    val = solution.get_value(x[i, u])
+                    if val > best_val:
+                        best_val = val
+                        best_u = u
                 
-            #     if best_val > 0.5:
-            #         assignment.append(best_u)
-            #     else:
-            #         # Fractional solution - round best value
-            #         assignment.append(best_u)
+                if best_val > 0.5:
+                    assignment.append(best_u)
+                else:
+                    # Fractional solution - round best value
+                    assignment.append(best_u)
+                    is_feasible = False
+            
+            # Checking feasibility of the solution
+            is_feasible = True
+            
+            
+            # is_feasible = True
+            # # sum_i x_i_u == 1 for all u
+            # for u in range(problem.n):
+            #     lhs = np.sum(solution.get_value(x[i, u]) for i in range(problem.n) )
+            #     if abs(lhs - 1) > 1e-5:
+            #         print(f"Warning: sum_i x_i_{u} = {lhs} != 1.")
             #         is_feasible = False
-
+            #         break
+            # # sum_u x_i_u == 1 for all i
+            # for i in range(problem.n):
+            #     lhs = np.sum(solution.get_value(x[i, u]) for u in range(problem.n) )
+            #     if abs(lhs - 1) > 1e-5:
+            #         print(f"Warning: sum_u x_{i}_u = {lhs} != 1.")
+            #         is_feasible = False
+            #         break
+            # # sum_v y_i_u_j_v == x_i_u for all i,u,j
+            # for i in range(problem.n):
+            #     for u in range(problem.n):
+            #         for j in range(problem.n):
+            #             lhs = np.sum(solution.get_value(y[i, u, j, v]) if (i, u, j, v) in y else solution.get_value(y[j, v, i, u]) if (j, v, i, u) in y else 0 for v in range(problem.n))
+            #             if abs(lhs - solution.get_value(x[i, u])) > 1e-5:
+            #                 print(f"Warning: sum_v y_{i}_{u}_{j}_v = {lhs} != x_{i}_{u} = {solution.get_value(x[i, u])}.")
+            #                 is_feasible = False
+            #                 break
+            #         if not is_feasible:
+            #             break
+            #     if not is_feasible:
+            #         break
+            # # sum_j y_i_u_j_v == x_i_u for all i,u,v
+            # for i in range(problem.n):
+            #     for u in range(problem.n):
+            #         for v in range(problem.n):
+            #             lhs = np.sum(solution.get_value(y[i, u, j, v]) if (i, u, j, v) in y else solution.get_value(y[j, v, i, u]) if (j, v, i, u) in y else 0 for j in range(problem.n))
+            #             if abs(lhs - solution.get_value(x[i, u])) > 1e-5:
+            #                 print(f"Warning: sum_j y_{i}_{u}_j_{v} = {lhs} != x_{i}_{u} = {solution.get_value(x[i, u])}.")
+            #                 is_feasible = False
+            #                 break
+            #         if not is_feasible:
+            #             break
+            #     if not is_feasible:
+            #         break
+                # check fixed assignments
             # Compute actual QAP objective from assignment if feasible
-            if is_feasible and len(assignment) == problem.n:
-                actual_objective = problem.evaluate_assignment(assignment)
-            else:
-                # Can't evaluate non-integer solution
-                actual_objective = solution.get_objective_value()
+            # if is_feasible and len(assignment) == problem.n:
+            #     actual_objective = problem.evaluate_assignment(assignment)
+            # else:
+            #     # Can't evaluate non-integer solution
+            #     actual_objective = solution.get_objective_value()
             print(f"CPLEX Objective: {solution.get_objective_value()}")
             
             # Create solution object

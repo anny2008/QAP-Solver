@@ -1,0 +1,10 @@
+{
+  "solver": "m4_volume",
+  "formulation": "formulation3",
+  "instance": "/home/local.isima.fr/antran/UFF/QAP_New_formulation/data/QAPLIB/tai12b.dat",
+  "time_limit": 60,
+  "threads": 8,
+  "log_output": true,
+  "save_dual": "",
+  "description": "M4 Volume Algorithm solver using Lagrangian relaxation for lower bounds"
+}

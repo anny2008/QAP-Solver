@@ -1,0 +1,19 @@
+{
+  "solver": "rlt1_column_generation_cplex",
+  "formulation": "rlt1",
+  "stabilize": false,
+  "lambda_min": 1e-6,
+  "lambda_max": 0.9999999,
+  "lambda_init": 0.7,
+  "lambda_step_up": 0.01,
+  "use_relative_improve": true,
+  "improve_rel_eps": 1e-6,
+  "epsilon": 1e-7,
+  "add_most_negative": true,
+  "instance": "/home/local.isima.fr/antran/UFF/QAP-Solver/data/M/instance_02_2_LEFT.txt",
+  "max_iterations": 120000,
+  "threads": 8,
+  "log_output": true,
+  "bigM": 1e6,
+  "warmstart": ""
+}

@@ -1,0 +1,12 @@
+{
+  "solver": "rlt1_bundle",
+  "formulation": "formulation1",
+  "instance": "data/QAPLIB/chr12a.dat",
+  "iteration_limit": 10000000,
+  "time_limit": 60,
+  "threads": 12,
+  "log_output": true,
+  "save_dual": "",
+  "output_path":"",
+  "description": "RLT1 Bundle Algorithm solver for QAP"
+}

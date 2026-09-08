@@ -36,56 +36,54 @@ from qap.decomposition import decompose_value_layer, decompose_value_only, decom
 def solve_fixed_e_and_get_cuts(qap_problem, V, M, subgraphs, x_e_sol, e_sol):
     cpx_fix_e = cplex.Cplex()
     cpx_fix_e.set_problem_name(f"SFD_Cut_Generation")
+    key_iu = [(i, u) for i in V for u in M]
 
-    y_keys = [(i, u, j, v) for i in V for u in M for j in V for v in M if i < j and u != v]
+    y_keys = [(i, u, j, v) for (i, u) in key_iu for (j,v) in key_iu if i < j and u != v]
     y_index = {key: idx for idx, key in enumerate(y_keys)}
     y_names = [f"y_{i}_{u}_{j}_{v}" for (i, u, j, v) in y_keys]
-    y_obj = [float(qap_problem.D[i, j] * qap_problem.F[u, v]) for (i, u, j, v) in y_keys]
     # print(len(y_names), "y variables created out of", len(V)*len(M)*len(V)*len(M), "possible")
+    # obj = [qap_problem.D[i][j] * qap_problem.F[u][v] + qap_problem.D[j][i] * qap_problem.F[v][u] for (i, u, j, v) in y_keys]
+    
     cpx_fix_e.variables.add(
-        obj=y_obj,
+        obj=[0.0] * len(y_keys),
         lb=[0.0] * len(y_keys),
         names=y_names,
     )
     
+    y = {(i, u, j, v): y_index[(i, u, j, v)] for (i, u, j, v) in y_keys}
+    y.update({(j, v, i, u): y_index[(i, u, j, v)] for (i, u, j, v) in y_keys})
     cpx_fix_e.objective.set_sense(cpx_fix_e.objective.sense.minimize)
-
-    def y_pos(i, u, j, v):
-        if i < j:
-            return y_index[(i, u, j, v)]
-        return y_index[(j, v, i, u)]
 
     lin_expr = []
     senses = []
     rhs = []
     names = []
     
-    for i in V:
-        for u in M:
-            for j in V:
-                if i != j:
-                    # sum_v y_iujv >= x_iu for all i,u,j
-                    ind = [y_pos(i, u, j, v) for v in M if v != u]
-                    lin_expr.append(cplex.SparsePair(ind=ind, val=[1.0] * len(ind)))
-                    senses.append("E")
-                    rhs.append(x_e_sol[i,u])
-                    names.append(f"y_row_{i}_{u}_{j}")
-                    
-                    
-            for v in M:
-                if v != u:
-                    ind = [y_pos(i, u, j, v) for j in V if j != i]
-                    lin_expr.append(cplex.SparsePair(ind=ind, val=[1.0] * len(ind)))
-                    senses.append("E")
-                    rhs.append(x_e_sol[i,u])
-                    names.append(f"y_col_{i}_{u}_{v}")
+    for (i,u) in key_iu:
+        for j in V:
+            if i != j:
+                # sum_v y_iujv >= x_iu for all i,u,j
+                ind = [y[(i, u, j, v)] for v in M if (i, u, j, v) in y]
+                lin_expr.append(cplex.SparsePair(ind=ind, val=[1.0] * len(ind)))
+                senses.append("E")
+                rhs.append(x_e_sol[i,u])
+                names.append(f"y_row_{i}_{u}_{j}")
+                
+                
+        for v in M:
+            if v != u:
+                ind = [y[(i, u, j, v)] for j in V if (i, u, j, v) in y]
+                lin_expr.append(cplex.SparsePair(ind=ind, val=[1.0] * len(ind)))
+                senses.append("E")
+                rhs.append(x_e_sol[i,u])
+                names.append(f"y_col_{i}_{u}_{v}")
                     
                     
     for k, (flow_value, arcs, nodes) in subgraphs.items():
         for i in V:
             for j in V:
                 if i != j:
-                    ind = [y_pos(i, u, j, v) for u in M for v in M if (u, v) in arcs]
+                    ind = [y[(i, u, j, v)] for u in M for v in M if (u, v) in arcs and (i, u, j, v) in y]
                     lin_expr.append(cplex.SparsePair(ind=ind, val=[1.0] * len(ind)))
                     senses.append("E")
                     rhs.append(float(e_sol[k, i, j]))
@@ -183,18 +181,25 @@ class SFDLazyCallback(cpx_cb.LazyConstraintCallback):
 
         if not optimal:
             vars_to_add_G = {}
+            verify_cut = 0.0
             for constraint_name, val in non_zero_pi:
                 if constraint_name.startswith("y_e_def_"):
                     _, _, _, k, i, j = constraint_name.split("_")
                     k = int(k); i = int(i); j = int(j)
+                    verify_cut += val * e_sol.get((k, i, j), 0.0)
                     vars_to_add_G[(k, i, j)] = (e_pos(k, i, j), vars_to_add_G.get((k, i, j), (None, 0.0))[1] + val)
                 elif constraint_name.startswith("y_row_") or constraint_name.startswith("y_col_"):
                     _, _, i, u, j = constraint_name.split("_")
                     i = int(i); u = int(u); j = int(j)
+                    verify_cut += val * x_e_sol.get((i, u), 0.0)
                     vars_to_add_G[(i, u)] = (self.x_index[(i, u)], vars_to_add_G.get((i, u), (None, 0.0))[1] + val)
             if len(vars_to_add_G) > 0:
                 ind = [idx for _, (idx, v) in vars_to_add_G.items()]
                 val = [v * -1.0 for _, (idx, v) in vars_to_add_G.items()]
+                # verify that the cut is violated by current solution
+                if verify_cut >= -1e-6:
+                    print(f"Generated Bender cut is not violated by current solution (lhs={verify_cut}), skipping.")
+                    return
                 self.add(cplex.SparsePair(ind=ind, val=val), sense="G", rhs=0.0)
                 self.cut_bender_count += 1
                 if self.cut_bender_count % 100 == 0:
@@ -241,24 +246,30 @@ class SFDUserCutCallback(cpx_cb.UserCutCallback):
             return
 
         if not optimal:
+            verify_cut = 0.0
             vars_to_add_G = {}
             for constraint_name, val in non_zero_pi:
                 if constraint_name.startswith("y_e_def_"):
                     _, _, _, k, i, j = constraint_name.split("_")
                     k = int(k); i = int(i); j = int(j)
+                    verify_cut += val * e_sol.get((k, i, j), 0.0)
                     vars_to_add_G[(k, i, j)] = (e_pos(k, i, j), vars_to_add_G.get((k, i, j), (None, 0.0))[1] + val)
                 elif constraint_name.startswith("y_row_") or constraint_name.startswith("y_col_"):
                     _, _, i, u, j = constraint_name.split("_")
                     i = int(i); u = int(u); j = int(j)
+                    verify_cut += val * x_e_sol.get((i, u), 0.0)
                     vars_to_add_G[(i, u)] = (self.x_index[(i, u)], vars_to_add_G.get((i, u), (None, 0.0))[1] + val)
             if len(vars_to_add_G) > 0:
+                if verify_cut >= -1e-6:
+                    print(f"Generated Bender cut is not violated by current solution (lhs={verify_cut}), skipping.")
+                    return
                 ind = [idx for _, (idx, v) in vars_to_add_G.items()]
                 val = [v * -1.0 for _, (idx, v) in vars_to_add_G.items()]
                 self.add(cplex.SparsePair(ind=ind, val=val), sense="G", rhs=0.0)
                 self.cut_bender_count += 1
-                # if self.cut_bender_count % 10 == 0:
-                #     print(f"Added Bender cut #{self.cut_bender_count} total cuts: {self.cut_bender_count + self.cut_x_e_count}")
-                print(f"Added Bender cut #{self.cut_bender_count} total cuts: {self.cut_bender_count + self.cut_x_e_count}")
+                if self.cut_bender_count % 100 == 0:
+                    print(f"Added Bender cut #{self.cut_bender_count} total cuts: {self.cut_bender_count + self.cut_x_e_count}")
+                # print(f"Added Bender cut #{self.cut_bender_count} total cuts: {self.cut_bender_count + self.cut_x_e_count}")
                 # print(f"Added cut #{self.cut_bender_count} with {len(ind)} variables, scale={z_value}, non_zero_pi={len(non_zero_pi)}")
 
 
@@ -552,8 +563,8 @@ class SFDLazyCallback:
         #
         # Run both cut generators
         #
-        self.add_x_e_cut(context, x_e_sol, e_sol)
-        # self.add_benders_cut(context, x_e_sol, e_sol)
+        # self.add_x_e_cut(context, x_e_sol, e_sol)
+        self.add_benders_cut(context, x_e_sol, e_sol)
 
     # -------------------------
     # x-e lazy feasibility cuts
@@ -779,9 +790,9 @@ class SFDSolver:
         
         
         if is_symmetric:
-            e_keys = [(k, i, j) for k in subgraphs for i in V for j in V if i < j]
+            e_keys = [(k, i, j) for k in subgraphs for i in V for j in V if i <= j]
         else:
-            e_keys = [(k, i, j) for k in subgraphs for i in V for j in V if i != j]
+            e_keys = [(k, i, j) for k in subgraphs for i in V for j in V]
         e_local_index = {key: idx for idx, key in enumerate(e_keys)}
         e_index = {key: idx + len(x_keys) for idx, key in enumerate(e_keys)}
         e_obj = [0.0] * len(e_keys)
@@ -1074,29 +1085,30 @@ class SFDSolver:
                 machines_file=instance_path.replace(".txt", "_machines.txt"),
                 fixed_file=instance_path.replace(".txt", "_fixed.txt")
             )
-
+        warmstart = None
         # Load warm-start if provided
         if warmstart_path is not None:
             warmstart = read_warmstart(warmstart_path)
-        else:
-            # use LocalSearchSolver to find a warm-start solution
-            from qap.modules.local_search import LocalSearchSolver
+        # else:
+        #     # use LocalSearchSolver to find a warm-start solution
+        #     from qap.modules.local_search import LocalSearchSolver
             
-            print(f"Running local search to find initial solution...")
-            local_solver = LocalSearchSolver({})
-            local_solution = local_solver.solve(problem, fixed_variables=None)
-            print(f"Local search initial solution: obj={local_solution.objective:.6f}")
-            if hasattr(problem, "fixed_assignments"):
-                for i, u in problem.fixed_assignments.items():
-                    if local_solution.assignment[i] != u:
-                        print(f"Warning: Local search solution violates fixed assignment at location {i}: assigned {local_solution.assignment[i]} vs fixed {u}")
+        #     print(f"Running local search to find initial solution...")
+        #     local_solver = LocalSearchSolver({})
+        #     local_solution = local_solver.solve(problem, fixed_variables=None)
+        #     print(f"Local search initial solution: obj={local_solution.objective:.6f}")
+        #     if hasattr(problem, "fixed_assignments"):
+        #         for i, u in problem.fixed_assignments.items():
+        #             if local_solution.assignment[i] != u:
+        #                 print(f"Warning: Local search solution violates fixed assignment at location {i}: assigned {local_solution.assignment[i]} vs fixed {u}")
                     
-            warmstart = {(i, u): 1.0 for i, u in enumerate(local_solution.assignment)}
+        #     warmstart = {(i, u): 1.0 for i, u in enumerate(local_solution.assignment)}
         
         if self.matrix_for_decomposition == "distance":
             # Swap flow and distance for decomposition if specified in config
             problem.D, problem.F = problem.F, problem.D
-            warmstart = {(u, i): 1.0 for i, u in warmstart}  # Swap indices for warmstart as well
+            if warmstart_path is not None:
+                warmstart = {(u, i): 1.0 for i, u in warmstart}  # Swap indices for warmstart as well
         
         # print(problem.F)
         # if problem is in QAPLIB and is symmetric convert the flow matrix to assymmetric

@@ -103,6 +103,9 @@ def decompose_value_only(problem, matrix='flow') -> Dict[int, Tuple[float, List[
         nodes_0.add(u)
         nodes_0.add(v)
     subgraphs[0] = (0.0, arcs_0, nodes_0)  # Add empty subgraph for zero flow
+
+    for k, (f_k, edges, G_n_k) in subgraphs.items():
+        print(f"Subgraph {k}: flow value = {f_k}, edges = {len(edges)}, nodes = {len(G_n_k)}")
     return subgraphs
 
 

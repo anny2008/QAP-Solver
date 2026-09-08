@@ -1,0 +1,11 @@
+{
+  "solver": "sfdcg_cplex",
+  "formulation": "SFDCG",
+  "instance": "/home/local.isima.fr/antran/UFF/QAP_New_formulation/data/QAPLIB/nug20.dat",
+  "decomposition": "value_only",
+  "time_limit": 36000,
+  "log_output": true,
+  "is_relax": false,
+  "add_most_negative": true,
+  "warmstart": ""
+}

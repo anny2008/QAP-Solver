@@ -1,0 +1,17 @@
+{
+  "solver": "sfd",
+  "formulation": "sfd",
+  "instance": "/home/local.isima.fr/antran/UFF/QAP_New_formulation/data/QAPLIB/tai12a.dat",
+  "decomposition": "value_only",
+  "matrix_for_decomposition": "distance",
+  "use_lazy_constraints": true,
+  "use_cuts": true,
+  "time_limit": 6040800,
+  "threads": 100,
+  "log_output": true,
+  "is_relax": false,
+  "lpmethod": "auto",
+  "binary_variables": "x",
+  "description": "Subgraph Flow Decomposition solver for QAP using Gurobi Python",
+  "warmstart": ""
+}

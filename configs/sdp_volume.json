@@ -1,0 +1,18 @@
+{
+  "solver": "sdp_volume",
+  "formulation": "formulation5",
+  "instance": "data/QAPLIB/tai60a.dat",
+  "iteration_limit": 10000000000,
+  "eigen_solver": "lanczos",
+  "alpha_init": 0.1,
+  "lambda_init": 0.1,
+  "C": 10,
+  "time_limit": 3600,
+  "ncv_init": 0.01,
+  "tol_init": 0.05,
+  "threads": 60,
+  "log_output": true,
+  "save_dual": "",
+  "output_path":"",
+  "description": "SDP Volume Algorithm solver for QAP"
+}

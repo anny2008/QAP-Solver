@@ -9,6 +9,7 @@ public:
         std::optional<QuadKey> best_col;
         double best_rc = 0.0;
         std::vector<QuadKey> negative_cols;
+        std::unordered_map<QuadKey, double, QuadKeyHash> all_rcs; // for debugging: store reduced cost of all priced columns
     };
 
     PricingEngine(const std::vector<int>& V_,

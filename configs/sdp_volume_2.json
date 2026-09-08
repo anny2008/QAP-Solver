@@ -1,0 +1,16 @@
+{
+  "solver": "sdp_volume_2",
+  "formulation": "formulation2",
+  "instance": "data/QAPLIB/tai12a.dat",
+  "iteration_limit": 100000000000,
+  "eigen_solver": "full",
+  "alpha_init": 0.1,
+  "lambda_init": 10.0,
+  "C": 10,
+  "time_limit": 3600,
+  "threads": 12,
+  "log_output": true,
+  "save_dual": "",
+  "output_path":"",
+  "description": "SDP Volume Algorithm solver for QAP"
+}

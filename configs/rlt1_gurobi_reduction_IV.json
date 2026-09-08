@@ -1,0 +1,11 @@
+{
+  "solver": "rlt1_gurobi_reduction_IV",
+  "formulation": "rlt1_reduced",
+  "instance": "/home/local.isima.fr/antran/UFF/QAP-Solver/data/M/instance_04_LEFT.txt",
+  "time_limit": 6040800,
+  "threads": 100,
+  "log_output": true,
+  "is_relax": false,
+  "lpmethod": "auto",
+  "warmstart": ""
+}

@@ -1,0 +1,11 @@
+{
+  "solver": "rlt1_cplex_reduction_IV",
+  "formulation": "rlt1_reduced",
+  "instance": "data/M/instance_01_2_LEFT.txt",
+  "time_limit": 6040800,
+  "threads": 100,
+  "log_output": true,
+  "is_relax": true,
+  "lpmethod": "auto",
+  "warmstart": ""
+}

@@ -241,5 +241,53 @@ class Problem:
         D_sub = self.D[:size, :size]
         return Problem(size, F_sub, D_sub)
     
+    
+    # change the index of locations and facilities so that all the fixed assignments are at the end of the lists
+    # for example, if location 0 is fixed to facility 2, and location 1 is fixed to facility 3,
+    # then the new order of locations will be [2,3,0,1] and the new order of facilities will be [0,1,2,3]
+    # the F and D matrices will be permuted accordingly, and the fixed_assignments map will be updated to reflect the new indices
+    def shiftFixedAssignmentsToEnd(self):
+        loc_map = [-1] * self.n
+        fac_map = [-1] * self.m
+        loc_idx = 0
+        fac_idx = 0
+        fixed_idx = 0
+
+        # First, assign indices to fixed locations and facilities
+        for loc, fac in self.fixed_assignments.items():
+            loc_map[loc] = self.n - 1 - fixed_idx  # fixed locations go to the end
+            fac_map[fac] = self.m - 1 - fixed_idx  # fixed facilities go to the end
+            print(f"Shifting fixed assignment: location {loc} -> facility {fac}")
+            print(f" to new indices: location {loc_map[loc]}, facility {fac_map[fac]}")
+            fixed_idx += 1
+
+        # Then, assign indices to non-fixed locations and facilities
+        for i in range(self.n):
+            if loc_map[i] == -1:
+                loc_map[i] = loc_idx
+                loc_idx += 1
+        for u in range(self.m):
+            if fac_map[u] == -1:
+                fac_map[u] = fac_idx
+                fac_idx += 1
+        #  Permute D and F matrices
+        new_D = np.zeros((self.n, self.n))
+        new_F = np.zeros((self.m, self.m))
+        for i in range(self.n):
+            for j in range(self.n):
+                new_D[loc_map[i]][loc_map[j]] = self.D[i][j]
+        for u in range(self.m):
+            for v in range(self.m):
+                new_F[fac_map[u]][fac_map[v]] = self.F[u][v]
+
+        self.D = new_D
+        self.F = new_F
+
+        # Update fixed_assignments map with new indices
+        new_fixed_assignments = {}
+        for old_loc, old_fac in self.fixed_assignments.items():
+            new_fixed_assignments[loc_map[old_loc]] = fac_map[old_fac]
+        self.fixed_assignments = new_fixed_assignments    
+    
     def __repr__(self):
         return f"Problem(n={self.n})"

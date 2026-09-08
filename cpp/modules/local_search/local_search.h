@@ -113,7 +113,11 @@ public:
 
             // Explore all swaps (neighborhood)
             for (int i = 0; i < n - 1; ++i) {
+                // if i or j are fixed assignments, skip
+                if (problem.fixed_assignments.count(i)) continue;
                 for (int j = i + 1; j < n; ++j) {
+                    // if i or j are fixed assignments, skip
+                    if (problem.fixed_assignments.count(j)) continue;
                     std::swap(perm[i], perm[j]);
                     double obj = computeObjective(problem, perm);
                     // Frequency penalty: penalize moves that have been used often
@@ -267,33 +271,37 @@ public:
      * @return true if improved, false otherwise
      */
     static bool improve(const Problem& problem, Solution& solution) {
-	bool improved = true;
-	int n = problem.n;
-	auto& perm = solution.assignment;
-	double best_obj = computeObjective(problem, perm);
-	int iter = 0;
-	auto start = std::chrono::high_resolution_clock::now();
-	while(improved) {
-		improved = false;
-		++iter;
-		for (int i = 0; i < n - 1; ++i) {
-			for (int j = i + 1; j < n; ++j) {
-				std::swap(perm[i], perm[j]);
-				double obj = computeObjective(problem, perm);
-				if (obj < best_obj) {
-					best_obj = obj;
-					solution.objective = obj;
-					improved = true;
-				} else {
-					std::swap(perm[i], perm[j]); // revert
-				}
-			}
-		}
-		auto now = std::chrono::high_resolution_clock::now();
-		double elapsed = std::chrono::duration<double>(now - start).count();
-		std::cout << "\t[2-opt] Iteration " << iter << ", objective = " << best_obj << ", time = " << elapsed << "s" << std::endl;
-	}
-	return best_obj < solution.objective;
+        bool improved = true;
+        int n = problem.n;
+        auto& perm = solution.assignment;
+        double best_obj = computeObjective(problem, perm);
+        int iter = 0;
+        auto start = std::chrono::high_resolution_clock::now();
+        while(improved) {
+            improved = false;
+            ++iter;
+            for (int i = 0; i < n - 1; ++i) {
+                // if i or j are fixed assignments, skip
+                if (problem.fixed_assignments.count(i)) continue;
+                for (int j = i + 1; j < n; ++j) {
+                    // if i or j are fixed assignments, skip
+                    if (problem.fixed_assignments.count(j)) continue;
+                    std::swap(perm[i], perm[j]);
+                    double obj = computeObjective(problem, perm);
+                    if (obj < best_obj) {
+                        best_obj = obj;
+                        solution.objective = obj;
+                        improved = true;
+                    } else {
+                        std::swap(perm[i], perm[j]); // revert
+                    }
+                }
+            }
+            auto now = std::chrono::high_resolution_clock::now();
+            double elapsed = std::chrono::duration<double>(now - start).count();
+            std::cout << "\t[2-opt] Iteration " << iter << ", objective = " << best_obj << ", time = " << elapsed << "s" << std::endl;
+        }
+        return best_obj < solution.objective;
     }
 
     /**

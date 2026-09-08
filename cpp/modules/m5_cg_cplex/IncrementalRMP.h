@@ -162,7 +162,7 @@ public:
     void checkLastAddedColumnBasis(); // check if the last added column is in the basis (for debugging)
     void checkBasicStatusChange(); // analyze the change in basic status of columns after adding a new column (for debugging) 
 
-private:
+// private:
     // helpers to ensure/create rows and variables
     IloRange& ensureC1(int i, int j);
     IloRange& ensureC2(int u, int v);

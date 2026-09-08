@@ -51,6 +51,7 @@ class RLT1CPLEXSolver:
         self.threads = config.get("threads", 8)
         self.log_output = config.get("log_output", False)
         self.preprocessing_symmetry = config.get("preprocessing_symmetry", 5)
+        self.lpmethod = config.get("lpmethod", "auto")
 
         # Validate config
         assert self.formulation == "rlt1", "RLT1 solver requires formulation='rlt1'"
@@ -157,9 +158,9 @@ class RLT1CPLEXSolver:
                 model.add_constraint(x[i, u] == 1, ctname=f"fix_x_{i}_{u}")
 
         # Configure solver parameters
-        model.parameters.timelimit = self.time_limit
-        model.parameters.threads = self.threads
-        model.parameters.preprocessing.symmetry = self.preprocessing_symmetry
+        # model.parameters.timelimit = self.time_limit
+        # model.parameters.threads = self.threads
+        # model.parameters.preprocessing.symmetry = self.preprocessing_symmetry
 
         return model, x, y
 
@@ -194,43 +195,112 @@ class RLT1CPLEXSolver:
                 ws_solution.add_var_value(x[i, u], value)
                 # Set y variables: y[i,u,j,v] = 1 if both x[i,u]=1 and x[j,v]=1
                 for (j, v), value2 in warmstart.items():
-                    ws_solution.add_var_value(y[i, u, j, v] if (i, u, j, v) in y else y[j, v, i, u] if (j, v, i, u) in y else 0, value*value2)
+                    if (i, u, j, v) in y or (j, v, i, u) in y:
+                        ws_solution.add_var_value(y[i, u, j, v] if (i, u, j, v) in y else y[j, v, i, u], value*value2)
             # Add MIP start using the solution object
             model.add_mip_start(ws_solution)
 
         # Solve
+        if self.lpmethod == "barrier":
+            model.parameters.lpmethod = 4  # Barrier method
+            print(f"Using barrier method for CPLEX.")
+        elif self.lpmethod == "dual_simplex":
+            model.parameters.lpmethod = 2  # Dual simplex
+            print(f"Using dual simplex method for CPLEX.")
+        elif self.lpmethod == "primal_simplex":
+            model.parameters.lpmethod = 1  # Primal simplex
+            print(f"Using primal simplex method for CPLEX.")
+        else:
+            print(f"Using default LP method (auto) for CPLEX.")
+        model.parameters.timelimit = self.time_limit
+            
         solution = model.solve(log_output=self.log_output)
         cpx = model.get_cplex()
         
         elapsed_time = time.time() - start_time
-        solution = cpx.solution
+        # solution = cpx.solution
         # Extract results
         if solution:
             # Extract assignment from x variables
+            num_y = sum(1 for var in y.values() if solution.get_value(var) > 1e-5)
+            print(f"Number of positive y variables: {num_y}: {num_y / len(y) * 100:.2f}%")
             assignment = []
             is_feasible = True
-            # for i in range(problem.n):
-            #     best_u = -1
-            #     best_val = -1
-            #     for u in range(problem.n):
-            #         val = solution.get_value(x[i, u])
-            #         if val > best_val:
-            #             best_val = val
-            #             best_u = u
+            for i in range(problem.n):
+                best_u = -1
+                best_val = -1
+                for u in range(problem.n):
+                    val = solution.get_value(x[i, u])
+                    if val > best_val:
+                        best_val = val
+                        best_u = u
                 
-            #     if best_val > 0.5:
-            #         assignment.append(best_u)
-            #     else:
-            #         # Fractional solution - round best value
-            #         assignment.append(best_u)
-            #         is_feasible = False
-
+                if best_val > 0.5:
+                    assignment.append(best_u)
+                else:
+                    # Fractional solution - round best value
+                    assignment.append(best_u)
+                    is_feasible = False
+            # print the number of nodes visited in the branch and bound tree
+            nb_nodes = getattr(model.solve_details, "nb_nodes_processed", None)
+            if nb_nodes is None:
+                try:
+                    nb_nodes = model.cplex.solution.progress.get_num_nodes_processed()
+                except Exception:
+                    nb_nodes = "unavailable"
+            print(f"Number of nodes explored: {nb_nodes}")
             # Compute actual QAP objective from assignment if feasible
-            if is_feasible and len(assignment) == problem.n:
-                actual_objective = problem.evaluate_assignment(assignment)
-            else:
-                # Can't evaluate non-integer solution
-                actual_objective = solution.get_objective_value()
+            # if is_feasible and len(assignment) == problem.n:
+            #     actual_objective = problem.evaluate_assignment(assignment)
+            # else:
+            #     # Can't evaluate non-integer solution
+            #     actual_objective = solution.get_objective_value()
+            
+            # check solution feasibility
+            is_feasible = True
+            # check fixed assignments
+            
+            
+            # # sum_i x_i_u == 1 for all u
+            # for u in range(problem.n):
+            #     lhs = np.sum(solution.get_value(x[i, u]) for i in range(problem.n) )
+            #     if abs(lhs - 1) > 1e-5:
+            #         print(f"Warning: sum_i x_i_{u} = {lhs} != 1.")
+            #         is_feasible = False
+            #         break
+            # # sum_u x_i_u == 1 for all i
+            # for i in range(problem.n):
+            #     lhs = np.sum(solution.get_value(x[i, u]) for u in range(problem.n) )
+            #     if abs(lhs - 1) > 1e-5:
+            #         print(f"Warning: sum_u x_{i}_u = {lhs} != 1.")
+            #         is_feasible = False
+            #         break
+            # # sum_v y_i_u_j_v == x_i_u for all i,u,j
+            # for i in range(problem.n):
+            #     for u in range(problem.n):
+            #         for j in range(problem.n):
+            #             lhs = np.sum(solution.get_value(y[i, u, j, v]) if (i, u, j, v) in y else solution.get_value(y[j, v, i, u]) if (j, v, i, u) in y else 0 for v in range(problem.n))
+            #             if abs(lhs - solution.get_value(x[i, u])) > 1e-5:
+            #                 print(f"Warning: sum_v y_{i}_{u}_{j}_v = {lhs} != x_{i}_{u} = {solution.get_value(x[i, u])}.")
+            #                 is_feasible = False
+            #                 break
+            #         if not is_feasible:
+            #             break
+            #     if not is_feasible:
+            #         break
+            # # sum_j y_i_u_j_v == x_i_u for all i,u,v
+            # for i in range(problem.n):
+            #     for u in range(problem.n):
+            #         for v in range(problem.n):
+            #             lhs = np.sum(solution.get_value(y[i, u, j, v]) if (i, u, j, v) in y else solution.get_value(y[j, v, i, u]) if (j, v, i, u) in y else 0 for j in range(problem.n))
+            #             if abs(lhs - solution.get_value(x[i, u])) > 1e-5:
+            #                 print(f"Warning: sum_j y_{i}_{u}_j_{v} = {lhs} != x_{i}_{u} = {solution.get_value(x[i, u])}.")
+            #                 is_feasible = False
+            #                 break
+            #         if not is_feasible:
+            #             break
+            #     if not is_feasible:
+            #         break
             
             # Create solution object
             result = Solution(
@@ -278,8 +348,10 @@ class RLT1CPLEXSolver:
         """
         # Load problem
         if "QAPLIB" in instance_path:
+            print(f"Loading QAPLIB instance from {instance_path}")
             problem = Problem.from_qaplib(instance_path)
         else:
+            print(f"Loading custom instance from {instance_path}")
             problem = Problem.from_full_instance(
                 matrix_file=instance_path,
                 workstations_file=instance_path.replace(".txt", "_workstations.txt"),
@@ -292,6 +364,19 @@ class RLT1CPLEXSolver:
             warmstart = read_warmstart(warmstart_path)
         else:
             warmstart = None
+        
+        
+        if np.all(problem.F == problem.F.T) and not np.all(problem.D == problem.D.T):
+            # convert distance matrix to symmetric by averaging with its transpose
+            new_D = (problem.D + problem.D.T) / 2
+            problem.D = new_D
+            print("Converted distance matrix to symmetric for RLT1 formulation.")
+        elif np.all(problem.D == problem.D.T) and not np.all(problem.F == problem.F.T):
+            # convert flow matrix to symmetric by averaging with its transpose
+            new_F = (problem.F + problem.F.T) / 2
+            problem.F = new_F
+            print("Converted flow matrix to symmetric for RLT1 formulation.")
+        
 
         # Solve
         solution = self.solve(

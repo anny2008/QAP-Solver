@@ -21,6 +21,7 @@
 #include <unordered_set>
 #include <sstream>
 #include <omp.h>
+#include <ilcplex/ilocplex.h>
 
 // Macro definitions for variable access
 #define x(i, u) (psol[(i) * n + (u)])
@@ -171,7 +172,7 @@ public:
         // Choose between row-only or column-only subproblem based on duals
         // Here we implement both and choose based on some criterion
         // For simplicity, we implement only column-only here
-        return solve_subproblem_column(u, rc, lcost, x, v, pcost);
+        return solve_subproblem_cplex(u, rc, lcost, x, v, pcost);
     }
 
     // SFD Lagrangian subproblem: assign facilities to locations, minimize cost
@@ -184,117 +185,81 @@ public:
         return 0;
     }
 
-    // Solve subproblem for column-only relaxation
-    int solve_subproblem_column(const VOL_dvector &dual, const VOL_dvector &rc, double &lcost, VOL_dvector &psol, VOL_dvector &vio, double &pcost)
+    int solve_subproblem_cplex(const VOL_dvector &dual, const VOL_dvector &rc, double &lcost, VOL_dvector &psol, VOL_dvector &vio, double &pcost)
     {
         auto n = qap_data.n;
 
         psol = 0.0;
         vio = 0.0;
 
-        std::fill(beta.begin(), beta.end(), 0);
-        std::fill(beta_j_ind.begin(), beta_j_ind.end(), 0);
-        std::fill(alpha.begin(), alpha.end(), 0);
-        std::fill(alpha_u_ind.begin(), alpha_u_ind.end(), 0);
+        // Create CPLEX model for SFD subproblem
+        // Decision variables: x[i][u] = 1 if location i assigned to facility u
+        // Constraints: each location assigned to exactly one facility, and SFD constraints for each subgraph
+        // Objective: minimize sum of assignment costs + dual penalties
+        IloEnv env;
+        IloModel model(env);
+        IloNumVarArray x(env, n * n, 0, 1, ILOBOOL);
+        // 0 <= e^k_ij <= 1 continuous variables for SFD constraints
+        IloNumVarArray e(env, n * n * subgraphs.size(), 0, 1, ILOFLOAT);
 
-        // Compute beta_i_u = min_e {lambda_u + sum_jk f_k * d_ij * e(i,j,k) }
-        // st. sum_j e(i,j,k) = degree_out(u) for all k
-        //     sum_j e(j,i,k) = degree_in(u) for all k
-        // Algorithm: Choose the best degree_out(u) j for each i,u
-        // #pragma omp parallel for collapse(2) schedule(static)
-        // for (int i = 0; i < n; ++i)
-        // {
-        //     for (int u = 0; u < n; ++u)
-        //     {
-        //         double min_beta = 1e100;
-        //         int min_j_ind = -1;
-        //         for (const auto &sg : subgraphs)
-        //         {
-        //             double sum_e = 0.0;
-        //             for (const auto &edge : sg.edge_set)
-        //             {
-        //                 int j = edge.first;
-        //                 int k = edge.second;
-        //                 sum_e += sg.f_k * qap_data.D[i][j];
-        //             }
-        //             double candidate_beta = lambda(u) + sum_e;
-        //             if (candidate_beta < min_beta)
-        //             {
-        //                 min_beta = candidate_beta;
-        //             }
-        //         }
-        //         Beta(i, u) = min_beta;
-        //     }
-        // }
-
-
-        // Compute reduced costs for x[i,u] variables
-        std::vector<double> rc_x(n * n, 0.0);
-        #pragma omp parallel for collapse(2) schedule(static)
+        // Add constraints
         for (int i = 0; i < n; ++i)
         {
+            IloExpr sum(env);
             for (int u = 0; u < n; ++u)
             {
-                rc_x[i * n + u] = -dual[u];
+                sum += x[i * n + u];
             }
+            model.add(sum == 1);
         }
 
-        // Solve assignment subproblem with HARD row constraints
-        std::vector<int> row_to_col(n, -1);
-        std::vector<bool> col_used(n, false);
-        for (int i = 0; i < n; ++i)
+        // Add SFD constraints for each subgraph
+        // e^k_ij >= x[i][u] + sum_{v | (u,v) \in G_k} x[j][v]  - 1 forall k, i,j
+        for (const auto &subgraph : subgraphs)
         {
-            int best_u = -1;
-            double best_rc = 1e100;
-            for (int u = 0; u < n; ++u)
+            // Implementation for SFD constraints
+            for (auto i=0; i < n; ++i)
             {
-                if (!col_used[u] && rc_x[i * n + u] < best_rc)
+                for (auto j=0; j < n; ++j)
                 {
-                    best_rc = rc_x[i * n + u];
-                    best_u = u;
-                }
-            }
-            if (best_u >= 0)
-            {
-                row_to_col[i] = best_u;
-                col_used[best_u] = true;
-                psol[i * n + best_u] = 1.0;
-            }
-        }
-
-        // If some rows remain unassigned, infeasible
-        for (int i = 0; i < n; ++i)
-        {
-            if (row_to_col[i] == -1)
-            {
-                return -1;
-            }
-        }
-
-        lcost = 0.0;
-        pcost = 0.0;
-
-        // Compute Lagrangian cost
-        for (int i = 0; i < n; ++i)
-        {
-            for (int u = 0; u < n; ++u)
-            {
-                if (psol[i * n + u] > 0.5)
-                {
-                    lcost += rc_x[i * n + u];
+                    if (i != j)
+                    {
+                        IloExpr lhs(env);
+                        lhs += e(i, j, &subgraph - &subgraphs[0]);
+                        for (const auto &edge : subgraph.edge_set)
+                        {
+                            int u = edge.first;
+                            int v = edge.second;
+                            lhs += x(i, u) + x(j, v);
+                        }
+                        model.add(lhs >= 1);
+                    }
                 }
             }
         }
 
-        // Compute violations for relaxed constraints
-        for (int u = 0; u < n; ++u)
+        // Set objective
+        IloExpr obj(env);
+        for (int i = 0; i < n; ++i)
         {
-            double sum_col = 0.0;
-            for (int i = 0; i < n; ++i)
+            for (int u = 0; u < n; ++u)
             {
-                sum_col += psol[i * n + u];
+                obj += qap_data.D[i][u] * x[i * n + u];
             }
-            vio[u] = 1.0 - sum_col;
+        }
+        model.add(IloMinimize(env, obj));
+
+        // Solve
+        IloCplex cplex(model);
+        cplex.solve();
+
+        // Extract solution
+        for (int i = 0; i < n; ++i)
+        {
+            for (int u = 0; u < n; ++u)
+            {
+                psol[i * n + u] = cplex.getValue(x[i * n + u]);
+            }
         }
 
         return 0;

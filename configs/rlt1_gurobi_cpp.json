@@ -1,0 +1,11 @@
+{
+  "solver": "rlt1_gurobi",
+  "formulation": "rlt1",
+  "instance": "/home/local.isima.fr/antran/UFF/QAP_New_formulation/data/QAPLIB/nug12.dat",
+  "time_limit": 6040800,
+  "threads": 100,
+  "log_output": true,
+  "is_relax": false,
+  "lpmethod": "auto",
+  "warmstart": "/home/local.isima.fr/antran/UFF/QAP_New_formulation/data/QAPLIB/nug12.sln"
+}

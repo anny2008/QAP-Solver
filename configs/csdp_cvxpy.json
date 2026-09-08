@@ -1,0 +1,11 @@
+{
+  "solver": "csdp_cvxpy",
+  "formulation": "csdp",
+  "instance": "/home/local.isima.fr/antran/UFF/QAP-Solver/data/M/instance_03_2_LEFT.txt",
+  "n_cliques": 4,
+  "threads": 100,
+  "log_output": true,
+  "is_relax": true,
+  "time_limit": 6040800,
+  "warmstart": ""
+}

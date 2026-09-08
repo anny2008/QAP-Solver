@@ -167,13 +167,15 @@ class QAPCplexSolver:
 
         if solution:
             # Extract assignment
-            assignment = [None] * problem.n
-            for i in range(problem.n):
-                for u in range(problem.n):
-                    if (i, u) in x:
-                        if solution.get_value(x[i, u]) > 0.5:
-                            assignment[i] = u
-                            break
+            assignment = None
+            if not self.is_relax:
+                assignment = [None] * problem.n
+                for i in range(problem.n):
+                    for u in range(problem.n):
+                        if (i, u) in x:
+                            if solution.get_value(x[i, u]) > 0.5:
+                                assignment[i] = u
+                                break
             return Solution(
                 instance="unknown",
                 solver=self.solver_name,
@@ -188,7 +190,7 @@ class QAPCplexSolver:
                 solver=self.solver_name,
                 assignment=None,
                 objective=None,
-                lower_bound=model.solve_details.best_bound,
+                lower_bound=None,
                 time=elapsed_time,
             )
 

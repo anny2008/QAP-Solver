@@ -8,13 +8,14 @@
 #include <queue>
 #include <stack>
 #include <limits>
+#include <climits>
 
 /*
   Hungarian algorithm (O(n^3)) for the min-cost assignment on a square matrix.
   Returns (min_cost, assignment), where assignment[i] = assigned column for row i (0-based).
   Cost type: double (works for nonnegative / moderate magnitudes).
 */
-std::pair<double, std::vector<int>> hungarian_min(const std::vector<std::vector<double>>& a) {
+std::pair<double, std::vector<int>> hungarian_min(const std::vector<std::vector<double>>& a, Problem& problem) {
     int n = (int)a.size();
     // 1-based arrays in the classic implementation
     std::vector<double> u(n + 1, 0), v(n + 1, 0);
@@ -52,7 +53,37 @@ std::pair<double, std::vector<int>> hungarian_min(const std::vector<std::vector<
             j0 = j1;
         } while (j0);
     }
-
+    // Handle the fixed assignment if needed
+    // if (!problem.fixed_assignments.empty()) {
+    //     std::map<int, int> fixed_map; // facility -> location
+    //     for (const auto& kv : problem.fixed_assignments) {
+    //         int i = kv.first;
+    //         int loc = kv.second;
+    //         if (fixed_map.count(i) && fixed_map[i] != loc) {
+    //             throw std::runtime_error("Inconsistent fixed assignments for facility " + std::to_string(i));
+    //         }
+    //         fixed_map[i] = loc;
+    //     }
+    //     for (const auto& kv : fixed_map) {
+    //         int i = kv.first;
+    //         int loc = kv.second;
+    //         // fix assignment of facility i to location loc
+    //         if (p[loc + 1] != i + 1) {
+    //             // Need to swap the current assignment of loc with the one of i
+    //             int j = 0;
+    //             for (j = 1; j <= n; ++j) {
+    //                 if (p[j] == i + 1) break;
+    //             }
+    //             p[j] = loc + 1;
+    //         }
+    //         // Now ensure that other facilities are not assigned to loc
+    //         for (int j = 1; j <= n; ++j) {
+    //             if (j != loc + 1 && p[j] == i + 1) {
+    //                 p[j] = 0; // unassign
+    //             }
+    //         }
+    //     }
+    // }
     std::vector<int> assignment(n, -1);
     for (int j = 1; j <= n; ++j) {
         if (p[j] != 0) assignment[p[j] - 1] = j - 1;
@@ -73,12 +104,14 @@ std::pair<double, std::vector<int>> hungarian_min(const std::vector<std::vector<
   Then GLB = min assignment on C.
 */
 
-GLBResult GilmoreLawler::compute(const std::vector<std::vector<double>>& F,
-                               const std::vector<std::vector<double>>& D) {
+GLBResult GilmoreLawler::compute(Problem& problem) {
+    const auto& F = problem.F;
+    const auto& D = problem.D;
     int n = (int)F.size();
     if (n == 0 || (int)F[0].size() != n || (int)D.size() != n || (int)D[0].size() != n) {
         throw std::runtime_error("F and D must be square matrices of the same dimension.");
     }
+    // handle fixed variables if needed
 
     // Precompute sorted rows (excluding diagonals):
     // ascF[i] = sorted ascending list of { F[i][j] : j != i }
@@ -119,7 +152,7 @@ GLBResult GilmoreLawler::compute(const std::vector<std::vector<double>>& F,
     }
 
     // Solve LAP on C
-    auto [glb_value, assign] = hungarian_min(C);
+    auto [glb_value, assign] = hungarian_min(C, problem);
 
     return GLBResult{glb_value, assign, C};
 }

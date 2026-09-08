@@ -77,6 +77,7 @@ public:
 class RLT1VolumeHooks2 : public RLT1VolumeHooks {
 public:
 	RLT1VolumeHooks2(const Problem& data);
+	virtual bool set_fixed_variables(const FixedVariables &fv) override;
 	virtual int solve_subproblem(const VOL_dvector&, const VOL_dvector&, double&, VOL_dvector&, VOL_dvector&, double&) override;
 	int solve_subproblem_2(const VOL_dvector& pi, double& lcost, VOL_dvector& psol, VOL_dvector& vio, double& pcost);
 };
@@ -107,6 +108,41 @@ public:
 	virtual int solve_subproblem(const VOL_dvector&, const VOL_dvector&, double&, VOL_dvector&, VOL_dvector&, double&) override;
 };
 
+class RLT1VolumeHooks6 : public RLT1VolumeHooks {
+private:
+	// Working arrays for subproblem
+	std::vector<double> zsol; // working array for z variables 
+public:
+	std::vector<int> best_assignment; // best assignment for x subproblem
+	double best_assignment_cost; // cost of best assignment
+	
+	RLT1VolumeHooks6(const Problem& data);
+	virtual bool set_fixed_variables(const FixedVariables &fv) override;
+	int solve_subproblem_6(const VOL_dvector& pi, double& lcost, VOL_dvector& psol, VOL_dvector& vio, double& pcost);
+	virtual int solve_subproblem(const VOL_dvector&, const VOL_dvector&, double&, VOL_dvector&, VOL_dvector&, double&) override;
+};
+
+class RLT1VolumeHooks7 : public RLT1VolumeHooks {
+public:
+	std::vector<int> best_assignment; // best assignment for x subproblem
+	double best_assignment_cost; // cost of best assignment
+	
+	RLT1VolumeHooks7(const Problem& data);
+	virtual bool set_fixed_variables(const FixedVariables &fv) override;
+	int solve_subproblem_7(const VOL_dvector& pi, double& lcost, VOL_dvector& psol, VOL_dvector& vio, double& pcost);
+	virtual int solve_subproblem(const VOL_dvector&, const VOL_dvector&, double&, VOL_dvector&, VOL_dvector&, double&) override;
+};
+
+class RLT1VolumeHooks5 : public RLT1VolumeHooks {
+private:
+	std::vector<double> zsol; // working array for z variables
+public:
+	RLT1VolumeHooks5(const Problem& data);
+	virtual bool set_fixed_variables(const FixedVariables &fv) override;
+	virtual int solve_subproblem(const VOL_dvector&, const VOL_dvector&, double&, VOL_dvector&, VOL_dvector&, double&) override;
+	int solve_subproblem_5(const VOL_dvector& pi, double& lcost, VOL_dvector& psol, VOL_dvector& vio, double& pcost);
+};
+
 struct VolumeResult {
 	int status = -1;           // 0 success, non-zero otherwise
 	double lower_bound = 0.0;
@@ -124,6 +160,10 @@ void set_up_vol_problem_1(VOL_problem &vol_problem, const Problem &qap_data, con
 void set_up_vol_problem_2(VOL_problem &vol_problem, const Problem &qap_data, const FixedVariables &fixed);
 void set_up_vol_problem_3(VOL_problem &vol_problem, const Problem &qap_data, const FixedVariables &fixed);
 void set_up_vol_problem_4(VOL_problem &vol_problem, const Problem &qap_data, const FixedVariables &fixed);
+void set_up_vol_problem_5(VOL_problem &vol_problem, const Problem &qap_data, const FixedVariables &fixed);
+void set_up_vol_problem_6(VOL_problem &vol_problem, const Problem &qap_data, const FixedVariables &fixed);
+void set_up_vol_problem_7(VOL_problem &vol_problem, const Problem &qap_data, const FixedVariables &fixed);
+
 void set_up_volume_parameters(VOL_problem &vol_problem, bool verbose);
 FixedViolationReport check_fixed_violations(const FixedVariables &fv, const VOL_dvector &psol, int n, double tol = 1e-6);
 PrimalViolationSummary compute_primal_violation_summary(const VOL_dvector &psol, int n);

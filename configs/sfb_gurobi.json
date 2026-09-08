@@ -1,0 +1,15 @@
+{
+  "solver": "sfb",
+  "formulation": "sfb",
+  "instance": "/home/local.isima.fr/antran/UFF/QAP_New_formulation/data/QAPLIB/nug12.dat",
+  "decomposition": "value_only",
+  "matrix_for_decomposition": "flow",
+  "use_cuts": false,
+  "time_limit": 6040800,
+  "threads": 100,
+  "log_output": true,
+  "is_relax": false,
+  "binary_variables": "x",
+  "description": "Subgraph Flow Decomposition solver for QAP using Gurobi Python",
+  "warmstart": "/home/local.isima.fr/antran/UFF/QAP_New_formulation/data/QAPLIB/nug12.sln"
+}

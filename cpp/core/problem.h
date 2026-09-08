@@ -238,6 +238,62 @@ public:
         return obj;
     }
 
+    // change the index of locations and facilities so that all the fixed assignments are at the end of the lists
+    // for example, if location 0 is fixed to facility 2, and location 1 is fixed to facility 3,
+    // then the new order of locations will be [2,3,0,1] and the new order of facilities will be [0,1,2,3]
+    // the F and D matrices will be permuted accordingly, and the fixed_assignments map will be updated to reflect the new indices
+    void shiftFixedAssignmentsToEnd() {
+        std::vector<int> loc_map(n, -1);
+        std::vector<int> fac_map(m, -1);
+        int loc_idx = 0;
+        int fac_idx = 0;
+        int fixed_idx = 0;
+
+        // First, assign indices to fixed locations and facilities
+        for (const auto& kv : fixed_assignments) {
+            int loc = kv.first;
+            int fac = kv.second;
+            loc_map[loc] = n - 1 - fixed_idx; // fixed locations go to the end
+            fac_map[fac] = m - 1 - fixed_idx; // fixed facilities go to the end
+            std::cout << "Shifting fixed assignment: location " << loc << " -> facility " << fac
+                      << " to new indices: location " << loc_map[loc] << ", facility " << fac_map[fac] << std::endl;
+            ++fixed_idx;
+        }
+
+        // Then, assign indices to non-fixed locations and facilities
+        for (int i = 0; i < n; ++i) {
+            if (loc_map[i] == -1) {
+                loc_map[i] = loc_idx++;
+            }
+        }
+        for (int u = 0; u < m; ++u) {
+            if (fac_map[u] == -1) {
+                fac_map[u] = fac_idx++;
+            }
+        }
+        // Permute D and F matrices
+        std::vector<std::vector<double>> new_D(n, std::vector<double>(n));
+        std::vector<std::vector<double>> new_F(m, std::vector<double>(m));
+        for (int i = 0; i < n; ++i)
+            for (int j = 0; j < n; ++j)
+                new_D[loc_map[i]][loc_map[j]] = D[i][j];
+        for (int u = 0; u < m; ++u)
+            for (int v = 0; v < m; ++v)
+                new_F[fac_map[u]][fac_map[v]] = F[u][v];
+
+        D.swap(new_D);
+        F.swap(new_F);
+
+        // Update fixed_assignments map with new indices
+        std::unordered_map<int, int> new_fixed_assignments;
+        for (const auto& kv : fixed_assignments) {
+            int old_loc = kv.first;
+            int old_fac = kv.second;
+            new_fixed_assignments[loc_map[old_loc]] = fac_map[old_fac];
+        }
+        fixed_assignments.swap(new_fixed_assignments);
+    }
+
 private:
     // Helpers that parse from already-open streams
     static Problem fromQAPLIBStream(std::istream& in) {

@@ -1,10 +1,11 @@
 {
   "solver": "rlt1_volume",
-  "formulation": "formulation3",
-  "instance": "/home/local.isima.fr/antran/UFF/QAP_New_formulation/data/QAPLIB/tai30a.dat",
+  "formulation": "formulation6",
+  "instance": "data/QAPLIB/sko90.dat",
   "time_limit": 60,
-  "threads": 8,
+  "threads": 90,
   "log_output": true,
   "save_dual": "",
+  "output_path":"",
   "description": "RLT1 Volume Algorithm solver using Lagrangian relaxation for lower bounds"
 }

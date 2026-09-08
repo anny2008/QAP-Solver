@@ -9,10 +9,10 @@ LIBFLAGS = -lscip -lpthread -ldl -lm -fopenmp
 
 
 # Source and output
-SRCS = rlt1_solver.cpp
+SRCS = m4_solver.cpp
 OBJS = $(SRCS:.cpp=.o)
-EXE = rlt1_solver
-VOLUME_LIB = ../rlt1_volume/librlt1_volume.a
+EXE = m4_solver
+VOLUME_LIB = ../m4_volume/libm4_volume.a
 
 
 # Build rules

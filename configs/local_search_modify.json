@@ -1,0 +1,13 @@
+{
+  "solver": "local_search",
+  "instance": "/home/local.isima.fr/antran/UFF/QAP-Solver/data/M/instance_318_LEFT.txt",
+  "method": "two_opt",
+  "time_limit": 120,
+  "initial_solution": "random",
+  "max_iterations": 5000,
+  "tabu_tenure": 20,
+  "freq_penalty_weight": 0.005,
+  "assign_penalty_weight": 0.02,
+  "perturb_strength": 2,
+  "seed": 10000
+}

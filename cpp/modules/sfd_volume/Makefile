@@ -1,20 +1,55 @@
-# Makefile for sfd Volume Solver
+# ============================================
+# Makefile for cg_cplex (local to this folder)
+# Directory: cpp/modules/cg_cplex
+# Builds:   cg_cplex
+# ============================================
 
-CXX = g++
-CXXFLAGS = -std=c++17 -O3 -Wall -Wextra -fopenmp
+# ---- Compiler ----
+CXX      = g++
+CXXFLAGS = -O3 -std=c++17 -Wall -Wextra -fPIC
+CPLEX_PATH = /opt/ibm/ILOG/CPLEX_Studio2211
+# ---- Include Paths ----
+# We are in cpp/modules/cg_cplex, so go up two levels to reach core/include
+INCLUDES = \
+    -I$(CPLEX_PATH)/concert/include \
+    -I$(CPLEX_PATH)/cplex/include \
+    -I../../core \
+    -I../../include \
+    -I.
 
-# Source files
-SRC = sfd_volume_solver.cpp VolVolume.cpp
-OBJ = sfd_volume_solver.o VolVolume.o
-EXE = sfd_volume_solver
+# ---- Library Paths (static PIC recommended) ----
+CONCERT_LIB = $(CPLEX_PATH)/concert/lib/x86-64_linux/static_pic
+CPLEX_LIB   = $(CPLEX_PATH)/cplex/lib/x86-64_linux/static_pic
 
-# Build rules
-all: $(EXE)
+LIBS = \
+    $(CONCERT_LIB)/libconcert.a \
+    $(CPLEX_LIB)/libilocplex.a \
+    $(CPLEX_LIB)/libcplex.a \
+    -lpthread -lm -ldl -fopenmp
 
-$(EXE): $(OBJ)
-	$(CXX) $(CXXFLAGS) -o $@ $^ -lm -lpthread
+# ---- Source Files (relative to this directory) ----
+SRC = \
+    sfd_volume_solver.cpp \
+    VolVolume.cpp \
+
+OBJ = $(SRC:.cpp=.o)
+
+# ---- Output executable ----
+TARGET = qubo_volume_solver
+
+# ============================================
+# Build Rules
+# ============================================
+
+all: $(TARGET)
+
+$(TARGET): $(OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIBS)
+
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 clean:
-	rm -f $(OBJ) $(EXE)
+	rm -f $(OBJ) $(TARGET)
 
 .PHONY: all clean

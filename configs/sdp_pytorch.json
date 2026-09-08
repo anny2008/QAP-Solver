@@ -1,0 +1,12 @@
+{
+  "solver": "sdp_pytorch",
+  "formulation": "zhao",
+  "instance": "data/QAPLIB/chr12a.dat",
+  "n_cliques": 4,
+  "max_iters": 1000,
+  "max_null_steps": 10,
+  "log_interval": 1,
+  "is_relax": true,
+  "time_limit": 6040800,
+  "warmstart": ""
+}

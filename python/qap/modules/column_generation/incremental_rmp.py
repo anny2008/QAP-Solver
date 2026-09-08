@@ -224,7 +224,10 @@ class IncrementalRMP:
         # Create the canonical y variable
         name = f"y_{ci}_{cu}_{cj}_{cv}"
         idx = self.cpx.variables.get_num()
-        obj = self.phi.get((ci, cu, cj, cv), 0.0) + self.phi.get((cj, cv, ci, cu), 0.0)
+        if ci != cj:
+            obj = self.phi.get((ci, cu, cj, cv), 0.0) + self.phi.get((cj, cv, ci, cu), 0.0)
+        else:
+            obj = self.phi.get((ci, cu, cj, cv), 0.0)  # if i==j, only one orientation exists in original model
         self.cpx.variables.add(
             names=[name],
             obj=[obj],

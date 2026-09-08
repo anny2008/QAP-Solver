@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -133,6 +134,96 @@ def run_rlt1_scip_cpp(args: "Args", spec: ModuleSpec) -> int:
 
     return _run_subprocess(cmd, spec.workdir)
 
+def run_rlt1_gurobi_reduction_IV_cpp(args: "Args", spec: ModuleSpec) -> int:
+    if not spec.binary:
+        raise ValueError("Missing binary path for rlt1_gurobi_reduction_IV")
+    # Load config if provided
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("RLT1 Gurobi Reduction IV (C++) requires --instance or instance in config")
+    cmd = [str(spec.binary), str(_resolve_path(instance))]
+    # Always pass config file (default or specified)
+    config_path = args.config if args.config else str(spec.default_config)
+    if config_path:
+        cmd += ["--config", str(_resolve_path(config_path))]
+    return _run_subprocess(cmd, spec.workdir)
+
+def run_rlt1_gurobi_reduction_IV_cpp_2(args: "Args", spec: ModuleSpec) -> int:
+    if not spec.binary:
+        raise ValueError("Missing binary path for rlt1_gurobi_reduction_IV_cpp_2")
+    # Load config if provided
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("RLT1 Gurobi Reduction IV (C++) requires --instance or instance in config")
+    cmd = [str(spec.binary), str(_resolve_path(instance))]
+    # Always pass config file (default or specified)
+    config_path = args.config if args.config else str(spec.default_config)
+    if config_path:
+        cmd += ["--config", str(_resolve_path(config_path))]
+    return _run_subprocess(cmd, spec.workdir)
+
+def run_rlt1_gurobi_cpp(args: "Args", spec: ModuleSpec) -> int:
+    if not spec.binary:
+        raise ValueError("Missing binary path for rlt1_gurobi")
+    # Load config if provided
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("RLT1 Gurobi (C++) requires --instance or instance in config")
+    cmd = [str(spec.binary), str(_resolve_path(instance))]
+    # Always pass config file (default or specified)
+    config_path = args.config if args.config else str(spec.default_config)
+    if config_path:
+        cmd += ["--config", str(_resolve_path(config_path))]
+    return _run_subprocess(cmd, spec.workdir)
+
+def run_KBXY_gurobi_cpp(args: "Args", spec: ModuleSpec) -> int:
+    if not spec.binary:
+        raise ValueError("Missing binary path for KBXY_gurobi")
+    # Load config if provided
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("KBXY Gurobi (C++) requires --instance or instance in config")
+    cmd = [str(spec.binary), str(_resolve_path(instance))]
+    # Always pass config file (default or specified)
+    config_path = args.config if args.config else str(spec.default_config)
+    if config_path:
+        cmd += ["--config", str(_resolve_path(config_path))]
+    return _run_subprocess(cmd, spec.workdir)
+
+def run_RLT1_cg(args: "Args", spec: ModuleSpec) -> int:
+    if not spec.binary:
+        raise ValueError("Missing binary path for rlt1_cg_cplex")
+    # Load config if provided
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("RLT1 Column Generation CPLEX (C++) requires --instance or instance in config")
+    cmd = [str(spec.binary), str(_resolve_path(instance))]
+    # Always pass config file (default or specified)
+    config_path = args.config if args.config else str(spec.default_config)
+    if config_path:
+        cmd += ["--config", str(_resolve_path(config_path))]
+    return _run_subprocess(cmd, spec.workdir)
+
+def run_RLT1_cg_gurobi(args: "Args", spec: ModuleSpec) -> int:
+    if not spec.binary:
+        raise ValueError("Missing binary path for rlt1_cg_cplex")
+    # Load config if provided
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("RLT1 Column Generation Gurobi (C++) requires --instance or instance in config")
+    cmd = [str(spec.binary), str(_resolve_path(instance))]
+    # Always pass config file (default or specified)
+    config_path = args.config if args.config else str(spec.default_config)
+    if config_path:
+        cmd += ["--config", str(_resolve_path(config_path))]
+    return _run_subprocess(cmd, spec.workdir)
+
 def run_sfd_volume(args: "Args", spec: ModuleSpec) -> int:
     if not spec.binary:
         raise ValueError("Missing binary path for sfd_volume")
@@ -207,9 +298,10 @@ def run_rlt1_volume(args: "Args", spec: ModuleSpec) -> int:
     if args.log or config.get("log_output", False):
         cmd.append("--log")
     
-    if args.output:
-        cmd += ["--output", str(_resolve_path(args.output))]
-    
+    output_path = config.get("output_path")
+    if output_path:
+        cmd += ["--output_path", str(_resolve_path(output_path))]
+
     # Dual vector save/load from config
     save_dual = config.get("save_dual", "")
     if save_dual:
@@ -221,6 +313,278 @@ def run_rlt1_volume(args: "Args", spec: ModuleSpec) -> int:
         
         
     formulation = config.get("formulation", "")
+    if formulation:
+        cmd += ["--formulation", str(formulation)]
+
+    # Fixed variables (file) from CLI or config key "fixed"
+    fixed_path = args.fixed or config.get("fixed")
+    if fixed_path:
+        cmd += ["--fixed", str(_resolve_path(fixed_path))]
+
+    return _run_subprocess(cmd, spec.workdir)
+
+def run_rlt1_bundle(args: "Args", spec: ModuleSpec) -> int:
+    if not spec.binary:
+        raise ValueError("Missing binary path for rlt1_bundle")
+    
+    # Load config if provided
+    config = _load_config(args.config, spec.default_config)
+    
+    # Determine instance path (CLI arg > config > error)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("RLT1 Bundle requires --instance or instance in config")
+
+    cmd = [str(spec.binary), str(_resolve_path(instance))]
+    
+    # Time limit: CLI > config > default
+    time_limit = args.time_limit or config.get("time_limit")
+    if time_limit is not None:
+        cmd += ["--time", str(time_limit)]
+    
+    iteration_limit = config.get("iteration_limit")
+    if iteration_limit is not None:
+        cmd += ["--iteration-limit", str(iteration_limit)]
+    
+    # Threads: CLI > config > default
+    threads = args.threads or config.get("threads")
+    if threads is not None:
+        cmd += ["--threads", str(threads)]
+    
+    # Log: CLI > config
+    if args.log or config.get("log_output", False):
+        cmd.append("--log")
+    
+    output_path = config.get("output_path")
+    if output_path:
+        cmd += ["--output_path", str(_resolve_path(output_path))]
+
+    # Dual vector save/load from config
+    save_dual = config.get("save_dual", "")
+    if save_dual:
+        cmd += ["--save-dual", str(_resolve_path(save_dual))]
+    
+    load_dual = config.get("load_dual", "")
+    if load_dual:
+        cmd += ["--load-dual", str(_resolve_path(load_dual))]
+        
+        
+    formulation = config.get("formulation", "")
+    if formulation:
+        cmd += ["--formulation", str(formulation)]
+
+    # Fixed variables (file) from CLI or config key "fixed"
+    fixed_path = args.fixed or config.get("fixed")
+    if fixed_path:
+        cmd += ["--fixed", str(_resolve_path(fixed_path))]
+
+    return _run_subprocess(cmd, spec.workdir)
+
+def run_sdp_bundle(args: "Args", spec: ModuleSpec) -> int:
+    if not spec.binary:
+        raise ValueError("Missing binary path for sdp_bundle")
+    
+    # Load config if provided
+    config = _load_config(args.config, spec.default_config)
+    
+    # Determine instance path (CLI arg > config > error)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("SDP Bundle requires --instance or instance in config")
+
+    cmd = [str(spec.binary), str(_resolve_path(instance))]
+    
+    # Time limit: CLI > config > default
+    time_limit = args.time_limit or config.get("time_limit")
+    if time_limit is not None:
+        cmd += ["--time", str(time_limit)]
+    
+    iteration_limit = config.get("iteration_limit")
+    if iteration_limit is not None:
+        cmd += ["--iteration-limit", str(iteration_limit)]
+
+    mSS = config.get("mSS")
+    if mSS is not None:
+        cmd += ["--mSS", str(mSS)]
+        
+    # Threads: CLI > config > default
+    threads = args.threads or config.get("threads")
+    if threads is not None:
+        cmd += ["--threads", str(threads)]
+    
+    # Log: CLI > config
+    if args.log or config.get("log_output", False):
+        cmd.append("--log")
+    
+    output_path = config.get("output_path")
+    if output_path:
+        cmd += ["--output_path", str(_resolve_path(output_path))]
+
+    # Dual vector save/load from config
+    save_dual = config.get("save_dual", "")
+    if save_dual:
+        cmd += ["--save-dual", str(_resolve_path(save_dual))]
+    
+    load_dual = config.get("load_dual", "")
+    if load_dual:
+        cmd += ["--load-dual", str(_resolve_path(load_dual))]
+        
+        
+    formulation = args.formulation or config.get("formulation", "")
+    if formulation:
+        cmd += ["--formulation", str(formulation)]
+
+    # Fixed variables (file) from CLI or config key "fixed"
+    fixed_path = args.fixed or config.get("fixed")
+    if fixed_path:
+        cmd += ["--fixed", str(_resolve_path(fixed_path))]
+
+    return _run_subprocess(cmd, spec.workdir)
+
+def run_sdp_volume(args: "Args", spec: ModuleSpec) -> int:
+    if not spec.binary:
+        raise ValueError("Missing binary path for sdp_volume")
+    
+    # Load config if provided
+    config = _load_config(args.config, spec.default_config)
+    
+    # Determine instance path (CLI arg > config > error)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("SDP Bundle requires --instance or instance in config")
+
+    cmd = [str(spec.binary), str(_resolve_path(instance))]
+    
+    # Time limit: CLI > config > default
+    time_limit = args.time_limit or config.get("time_limit")
+    if time_limit is not None:
+        cmd += ["--time", str(time_limit)]
+    
+    iteration_limit = config.get("iteration_limit")
+    if iteration_limit is not None:
+        cmd += ["--iteration-limit", str(iteration_limit)]
+        
+    lambda_init = config.get("lambda_init")
+    if lambda_init is not None:
+        cmd += ["--lambda-init", str(lambda_init)]
+        
+    alpha_init = config.get("alpha_init")
+    if alpha_init is not None:
+        cmd += ["--alpha-init", str(alpha_init)]
+        
+    ncv_init = config.get("ncv_init")
+    if ncv_init is not None:
+        cmd += ["--ncv-init", str(ncv_init)]
+        
+    tol_init = config.get("tol_init")
+    if tol_init is not None:
+        cmd += ["--tol-init", str(tol_init)]
+
+    eigen_solver = config.get("eigen_solver")
+    if eigen_solver:
+        cmd += ["--eigen-solver", str(eigen_solver)]
+        
+    C = config.get("C")
+    if C is not None:
+        cmd += ["--C", str(C)]
+        
+    # Threads: CLI > config > default
+    threads = args.threads or config.get("threads")
+    if threads is not None:
+        cmd += ["--threads", str(threads)]
+    
+    # Log: CLI > config
+    if args.log or config.get("log_output", False):
+        cmd.append("--log")
+    
+    output_path = config.get("output_path")
+    if output_path:
+        cmd += ["--output_path", str(_resolve_path(output_path))]
+
+    # Dual vector save/load from config
+    save_dual = config.get("save_dual", "")
+    if save_dual:
+        cmd += ["--save-dual", str(_resolve_path(save_dual))]
+    
+    load_dual = config.get("load_dual", "")
+    if load_dual:
+        cmd += ["--load-dual", str(_resolve_path(load_dual))]
+        
+        
+    formulation = args.formulation or config.get("formulation", "")
+    if formulation:
+        cmd += ["--formulation", str(formulation)]
+
+    # Fixed variables (file) from CLI or config key "fixed"
+    fixed_path = args.fixed or config.get("fixed")
+    if fixed_path:
+        cmd += ["--fixed", str(_resolve_path(fixed_path))]
+
+    return _run_subprocess(cmd, spec.workdir)
+
+def run_sdp_volume_2(args: "Args", spec: ModuleSpec) -> int:
+    if not spec.binary:
+        raise ValueError("Missing binary path for sdp_volume")
+    
+    # Load config if provided
+    config = _load_config(args.config, spec.default_config)
+    
+    # Determine instance path (CLI arg > config > error)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("SDP Bundle requires --instance or instance in config")
+
+    cmd = [str(spec.binary), str(_resolve_path(instance))]
+    
+    # Time limit: CLI > config > default
+    time_limit = args.time_limit or config.get("time_limit")
+    if time_limit is not None:
+        cmd += ["--time", str(time_limit)]
+    
+    iteration_limit = config.get("iteration_limit")
+    if iteration_limit is not None:
+        cmd += ["--iteration-limit", str(iteration_limit)]
+        
+    lambda_init = config.get("lambda_init")
+    if lambda_init is not None:
+        cmd += ["--lambda-init", str(lambda_init)]
+        
+    alpha_init = config.get("alpha_init")
+    if alpha_init is not None:
+        cmd += ["--alpha-init", str(alpha_init)]
+        
+    eigen_solver = config.get("eigen_solver")
+    if eigen_solver:
+        cmd += ["--eigen-solver", str(eigen_solver)]
+        
+    C = config.get("C")
+    if C is not None:
+        cmd += ["--C", str(C)]
+        
+    # Threads: CLI > config > default
+    threads = args.threads or config.get("threads")
+    if threads is not None:
+        cmd += ["--threads", str(threads)]
+    
+    # Log: CLI > config
+    if args.log or config.get("log_output", False):
+        cmd.append("--log")
+    
+    output_path = config.get("output_path")
+    if output_path:
+        cmd += ["--output_path", str(_resolve_path(output_path))]
+
+    # Dual vector save/load from config
+    save_dual = config.get("save_dual", "")
+    if save_dual:
+        cmd += ["--save-dual", str(_resolve_path(save_dual))]
+    
+    load_dual = config.get("load_dual", "")
+    if load_dual:
+        cmd += ["--load-dual", str(_resolve_path(load_dual))]
+        
+        
+    formulation = args.formulation or config.get("formulation", "")
     if formulation:
         cmd += ["--formulation", str(formulation)]
 
@@ -258,10 +622,7 @@ def run_m4_volume(args: "Args", spec: ModuleSpec) -> int:
     # Log: CLI > config
     if args.log or config.get("log_output", False):
         cmd.append("--log")
-    
-    if args.output:
-        cmd += ["--output", str(_resolve_path(args.output))]
-    
+
     # Dual vector save/load from config
     save_dual = config.get("save_dual", "")
     if save_dual:
@@ -313,6 +674,122 @@ def run_rlt1_cplex(args: "Args", spec: ModuleSpec) -> int:
     _print_solution_summary(solution)
     return 0
 
+def run_rlt1_cplex_reduction_IV(args: "Args", spec: ModuleSpec) -> int:
+    try:
+        from qap.modules.rlt1_cplex_reduction_IV.solver import RLT1CPLEXSolver
+    except ImportError as exc:
+        print("RLT1 CPLEX solver missing dependencies (docplex/cplex)", file=sys.stderr)
+        raise exc
+
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("RLT1 CPLEX requires --instance")
+    solver = RLT1CPLEXSolver(config)
+
+    # Warm-start: prefer CLI arg, else use config key 'warmstart' if provided
+    warmstart_path = None
+    if args.warmstart:
+        warmstart_path = str(_resolve_path(args.warmstart))
+    elif "warmstart" in config and config["warmstart"]:
+        warmstart_path = str(_resolve_path(config["warmstart"]))
+
+    solution = solver.solve_instance(
+        instance_path=str(_resolve_path(instance)),
+        output_path=str(_resolve_path(args.output)) if args.output else None,
+        warmstart_path=warmstart_path,
+    )
+
+    _print_solution_summary(solution)
+    return 0
+
+def run_rlt1_sdp(args: "Args", spec: ModuleSpec) -> int:
+    try:
+        from qap.modules.rlt1_sdp_cvxpy.solver import RLT1SDPSolver
+    except ImportError as exc:
+        print("RLT1 SDP solver missing dependencies (cvxpy)", file=sys.stderr)
+        raise exc
+
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("RLT1 SDP requires --instance")
+    solver = RLT1SDPSolver(config)
+
+    # Warm-start: prefer CLI arg, else use config key 'warmstart' if provided
+    warmstart_path = None
+    if args.warmstart:
+        warmstart_path = str(_resolve_path(args.warmstart))
+    elif "warmstart" in config and config["warmstart"]:
+        warmstart_path = str(_resolve_path(config["warmstart"]))
+
+    solution = solver.solve_instance(
+        instance_path=str(_resolve_path(instance)),
+        output_path=str(_resolve_path(args.output)) if args.output else None,
+        warmstart_path=warmstart_path,
+    )
+
+    _print_solution_summary(solution)
+    return 0
+
+def run_rlt1_gurobi(args: "Args", spec: ModuleSpec) -> int:
+    try:
+        from qap.modules.rlt1_gurobi.solver import RLT1GurobiSolver
+    except ImportError as exc:
+        print("RLT1 Gurobi solver missing", file=sys.stderr)
+        raise exc
+
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("RLT1 Gurobi requires --instance")
+    solver = RLT1GurobiSolver(config)
+
+    # Warm-start: prefer CLI arg, else use config key 'warmstart' if provided
+    warmstart_path = None
+    if args.warmstart:
+        warmstart_path = str(_resolve_path(args.warmstart))
+    elif "warmstart" in config and config["warmstart"]:
+        warmstart_path = str(_resolve_path(config["warmstart"]))
+
+    solution = solver.solve_instance(
+        instance_path=str(_resolve_path(instance)),
+        output_path=str(_resolve_path(args.output)) if args.output else None,
+        warmstart_path=warmstart_path,
+    )
+
+    _print_solution_summary(solution)
+    return 0
+
+def run_rlt1_gurobi_reduction_IV(args: "Args", spec: ModuleSpec) -> int:
+    try:
+        from qap.modules.rlt1_gurobi_reduction_IV.solver import RLT1GurobiSolver
+    except ImportError as exc:
+        print("RLT1 Gurobi solver missing", file=sys.stderr)
+        raise exc
+
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("RLT1 Gurobi requires --instance")
+    solver = RLT1GurobiSolver(config)
+
+    # Warm-start: prefer CLI arg, else use config key 'warmstart' if provided
+    warmstart_path = None
+    if args.warmstart:
+        warmstart_path = str(_resolve_path(args.warmstart))
+    elif "warmstart" in config and config["warmstart"]:
+        warmstart_path = str(_resolve_path(config["warmstart"]))
+
+    solution = solver.solve_instance(
+        instance_path=str(_resolve_path(instance)),
+        output_path=str(_resolve_path(args.output)) if args.output else None,
+        warmstart_path=warmstart_path,
+    )
+
+    _print_solution_summary(solution)
+    return 0
+
 def run_m5_cplex(args: "Args", spec: ModuleSpec) -> int:
     try:
         from qap.modules.m5_cplex.solver import M5CPLEXSolver
@@ -337,6 +814,28 @@ def run_m5_cplex(args: "Args", spec: ModuleSpec) -> int:
         instance_path=str(_resolve_path(instance)),
         output_path=str(_resolve_path(args.output)) if args.output else None,
         warmstart_path=warmstart_path,
+    )
+
+    _print_solution_summary(solution)
+    return 0
+
+def run_local_search_python(args: "Args", spec: ModuleSpec) -> int:
+    try:
+        from qap.modules.local_search.solver import LocalSearchSolver
+    except ImportError as exc:
+        print("Local Search Python solver missing dependencies", file=sys.stderr)
+        raise exc
+
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("Local Search Python requires --instance")
+    solver = LocalSearchSolver(config)
+
+    solution = solver.solve_instance(
+        instance_path=str(_resolve_path(instance)),
+        output_path=str(_resolve_path(args.output)) if args.output else None,
+        warmstart_path=str(_resolve_path(args.warmstart)) if args.warmstart else None,
     )
 
     _print_solution_summary(solution)
@@ -663,6 +1162,108 @@ def run_sfd_cplex(args: "Args", spec: ModuleSpec) -> int:
     _print_solution_summary(solution)
     return 0
 
+def run_sfd_gurobi(args: "Args", spec: ModuleSpec) -> int:
+    try:
+        from qap.modules.sfd_gurobi.solver import SFDGurobiSolver
+    except ImportError as exc:
+        print("SFD Gurobi solver missing dependencies (gurobipy)", file=sys.stderr)
+        raise exc
+
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("SFD Gurobi requires --instance")
+    solver = SFDGurobiSolver(config)
+
+    # Warm-start: prefer CLI arg, else use config key 'warmstart' if provided
+    warmstart_path = None
+    if args.warmstart:
+        warmstart_path = str(_resolve_path(args.warmstart))
+    elif "warmstart" in config and config["warmstart"]:
+        warmstart_path = str(_resolve_path(config["warmstart"]))
+
+    solution = solver.solve_instance(
+        instance_path=str(_resolve_path(instance)),
+        output_path=str(_resolve_path(args.output)) if args.output else None,
+        warmstart_path=warmstart_path,
+    )
+
+    _print_solution_summary(solution)
+    return 0
+
+def run_sfd_sdp(args: "Args", spec: ModuleSpec) -> int:
+    try:
+        from qap.modules.sfd_sdp_cvxpy.solver import SFDSDPSolver
+    except ImportError as exc:
+        print("SFD SDP solver missing dependencies (cvxpy)", file=sys.stderr)
+        raise exc
+
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("SFD SDP requires --instance")
+    solver = SFDSDPSolver(config)
+
+    # Warm-start: prefer CLI arg, else use config key 'warmstart' if provided
+    warmstart_path = None
+    if args.warmstart:
+        warmstart_path = str(_resolve_path(args.warmstart))
+    elif "warmstart" in config and config["warmstart"]:
+        warmstart_path = str(_resolve_path(config["warmstart"]))
+
+    solution = solver.solve_instance(
+        instance_path=str(_resolve_path(instance)),
+        output_path=str(_resolve_path(args.output)) if args.output else None,
+        warmstart_path=warmstart_path,
+    )
+
+    _print_solution_summary(solution)
+    return 0
+
+def run_sfd_gurobi_cpp(args: "Args", spec: ModuleSpec) -> int:
+    if not spec.binary:
+        raise ValueError("Missing binary path for sfd_gurobi")
+    # Load config if provided
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("SFD Gurobi (C++) requires --instance or instance in config")
+    cmd = [str(spec.binary), str(_resolve_path(instance))]
+    # Always pass config file (default or specified)
+    config_path = args.config if args.config else str(spec.default_config)
+    if config_path:
+        cmd += ["--config", str(_resolve_path(config_path))]
+    return _run_subprocess(cmd, spec.workdir)
+
+def run_sfb_gurobi(args: "Args", spec: ModuleSpec) -> int:
+    try:
+        from qap.modules.sfb_gurobi.solver import SFBGurobiSolver
+    except ImportError as exc:
+        print("SFB Gurobi solver missing dependencies (gurobipy)", file=sys.stderr)
+        raise exc
+
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("SFB Gurobi requires --instance")
+    solver = SFBGurobiSolver(config)
+
+    # Warm-start: prefer CLI arg, else use config key 'warmstart' if provided
+    warmstart_path = None
+    if args.warmstart:
+        warmstart_path = str(_resolve_path(args.warmstart))
+    elif "warmstart" in config and config["warmstart"]:
+        warmstart_path = str(_resolve_path(config["warmstart"]))
+
+    solution = solver.solve_instance(
+        instance_path=str(_resolve_path(instance)),
+        output_path=str(_resolve_path(args.output)) if args.output else None,
+        warmstart_path=warmstart_path,
+    )
+
+    _print_solution_summary(solution)
+    return 0
+
 def run_admm(args: "Args", spec: ModuleSpec) -> int:
     try:
         from qap.modules.admm.solver import ADMMSolver
@@ -685,9 +1286,155 @@ def run_admm(args: "Args", spec: ModuleSpec) -> int:
     _print_solution_summary(solution)
     return 0
 
+def run_csdp_cvxpy(args: "Args", spec: ModuleSpec) -> int:
+    try:
+        from qap.modules.csdp_cvxpy.solver import CSDPSolver
+    except ImportError as exc:
+        print("C-SDP solver missing dependencies (cvxpy)", file=sys.stderr)
+        raise exc
+
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("C-SDP requires --instance")
+    solver = CSDPSolver(config)
+
+    # Warm-start: prefer CLI arg, else use config key 'warmstart' if provided
+    warmstart_path = None
+    if args.warmstart:
+        warmstart_path = str(_resolve_path(args.warmstart))
+    elif "warmstart" in config and config["warmstart"]:
+        warmstart_path = str(_resolve_path(config["warmstart"]))
+
+    solution = solver.solve_instance(
+        instance_path=str(_resolve_path(instance)),
+        output_path=str(_resolve_path(args.output)) if args.output else None,
+        warmstart_path=warmstart_path,
+    )
+
+    _print_solution_summary(solution)
+    return 0
+
+def run_csdp(args: "Args", spec: ModuleSpec) -> int:
+    try:
+        from qap.modules.c_sdp_admm.solver import CSDPSolver
+    except ImportError as exc:
+        print("CSDP solver missing dependencies (numpy, scipy)", file=sys.stderr)
+        raise exc
+
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("CSDP requires --instance")
+    solver = CSDPSolver(config)
+
+    solution = solver.solve_instance(
+        instance_path=str(_resolve_path(instance)),
+        output_path=str(_resolve_path(args.output)) if args.output else None,
+        warmstart_path=str(_resolve_path(args.warmstart)) if args.warmstart else None,
+    )
+
+    _print_solution_summary(solution)
+    return 0
+
+def run_usbs(args: "Args", spec: ModuleSpec) -> int:
+    try:
+        from qap.modules.usbs.solver import USBSSolver
+    except ImportError as exc:
+        print("USBS solver missing dependencies (numpy, scipy)", file=sys.stderr)
+        raise exc
+
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("USBS requires --instance")
+    solver = USBSSolver(config)
+
+    solution = solver.solve_instance(
+        instance_path=str(_resolve_path(instance)),
+        output_path=str(_resolve_path(args.output)) if args.output else None,
+        warmstart_path=str(_resolve_path(args.warmstart)) if args.warmstart else None,
+    )
+
+    _print_solution_summary(solution)
+    return 0
+
+def run_sdp_pytorch(args: "Args", spec: ModuleSpec) -> int:
+    try:
+        from qap.modules.sdp_pytorch.solver import SDPPytorchSolver
+    except ImportError as exc:
+        print("SDP PyTorch solver missing dependencies (torch)", file=sys.stderr)
+        raise exc
+
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("SDP PyTorch requires --instance")
+    solver = SDPPytorchSolver(config)
+
+    solution = solver.solve_instance(
+        instance_path=str(_resolve_path(instance)),
+        output_path=str(_resolve_path(args.output)) if args.output else None,
+        warmstart_path=str(_resolve_path(args.warmstart)) if args.warmstart else None,
+    )
+
+    _print_solution_summary(solution)
+    return 0
+
 def run_local_search(args: "Args", spec: ModuleSpec) -> int:
     if not spec.binary:
         raise ValueError("Missing binary path for local_search")
+    # Use default config if not specified
+    config_path = args.config if args.config else str(spec.default_config)
+    config = _load_config(config_path, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("Local search requires --instance or instance in config")
+    cmd = [str(spec.binary), str(_resolve_path(instance))]
+    # Always pass config file (default or specified)
+    cmd += ["--config", str(_resolve_path(config_path))]
+    # Output file
+    if args.output:
+        cmd += ["--output", str(_resolve_path(args.output))]
+    # Max iterations
+    max_iter = config.get("max_iterations")
+    if max_iter is not None:
+        cmd += ["--max-iterations", str(max_iter)]
+    # Tabu tenure (for tabu search)
+    tabu_tenure = config.get("tabu_tenure")
+    if tabu_tenure is not None:
+        cmd += ["--tabu-tenure", str(tabu_tenure)]
+    # Initial solution type
+    init_sol = config.get("initial_solution")
+    if init_sol:
+        cmd += ["--initial-solution", init_sol]
+    # Seed
+    seed = config.get("seed")
+    if seed is not None:
+        cmd += ["--seed", str(seed)]
+    # Time limit
+    time_limit = args.time_limit or config.get("time_limit")
+    if time_limit is not None:
+        cmd += ["--time", str(time_limit)]
+    # Log
+    if args.log or config.get("log_output", False):
+        cmd.append("--log")
+    print(f"[run] {' '.join(cmd)} (cwd={spec.workdir})")
+    
+    # Frequency penalty weight (for robust tabu search)
+    freq_penalty_weight = config.get("freq_penalty_weight")
+    if freq_penalty_weight is not None:
+        cmd += ["--freq-penalty-weight", str(freq_penalty_weight)]
+    # Assignment penalty weight (for robust tabu search)
+    assign_penalty_weight = config.get("assign_penalty_weight")
+    if assign_penalty_weight is not None:
+        cmd += ["--assign-penalty-weight", str(assign_penalty_weight)]
+    result = subprocess.run(cmd, cwd=spec.workdir)
+    return result.returncode
+
+def run_local_search_modify(args: "Args", spec: ModuleSpec) -> int:
+    if not spec.binary:
+        raise ValueError("Missing binary path for local_search_modify")
     # Use default config if not specified
     config_path = args.config if args.config else str(spec.default_config)
     config = _load_config(config_path, spec.default_config)
@@ -796,6 +1543,35 @@ def run_qap_cplex(args: "Args", spec: ModuleSpec) -> int:
     if not instance:
         raise ValueError("QAP CPLEX requires --instance")
     solver = QAPCplexSolver(config)
+
+    # Warm-start: prefer CLI arg, else use config key 'warmstart' if provided
+    warmstart_path = None
+    if args.warmstart:
+        warmstart_path = str(_resolve_path(args.warmstart))
+    elif "warmstart" in config and config["warmstart"]:
+        warmstart_path = str(_resolve_path(config["warmstart"]))
+
+    solution = solver.solve_instance(
+        instance_path=str(_resolve_path(instance)),
+        output_path=str(_resolve_path(args.output)) if args.output else None,
+        warmstart_path=warmstart_path,
+    )
+
+    _print_solution_summary(solution)
+    return 0
+
+def run_qap_gurobi(args: "Args", spec: ModuleSpec) -> int:
+    try:
+        from qap.modules.qap_gurobi.solver import QAPGurobiSolver
+    except ImportError as exc:
+        print("QAP Gurobi solver missing dependencies (gurobipy)", file=sys.stderr)
+        raise exc
+
+    config = _load_config(args.config, spec.default_config)
+    instance = args.instance or config.get("instance")
+    if not instance:
+        raise ValueError("QAP Gurobi requires --instance")
+    solver = QAPGurobiSolver(config)
 
     # Warm-start: prefer CLI arg, else use config key 'warmstart' if provided
     warmstart_path = None
@@ -989,6 +1765,15 @@ MODULES: Dict[str, ModuleSpec] = {
         default_config=ROOT / "configs/vns.json",
         runner=run_vns,
     ),
+    "rlt1_gurobi_reduction_IV_cpp": ModuleSpec(
+        name="rlt1_gurobi_reduction_IV_cpp",
+        kind="cpp",
+        workdir=ROOT / "cpp/modules/rlt1_gurobi_reduction_IV",
+        binary=ROOT / "cpp/modules/rlt1_gurobi_reduction_IV/rlt1_gurobi_reduction_IV_solver",
+        build_cmd=["make"],
+        default_config=ROOT / "configs/rlt1_gurobi_reduction_IV_cpp.json",
+        runner=run_rlt1_gurobi_reduction_IV_cpp,
+    ),
     "sfd_scip": ModuleSpec(
         name="sfd_scip",
         kind="cpp",
@@ -1025,6 +1810,33 @@ MODULES: Dict[str, ModuleSpec] = {
         default_config=ROOT / "configs/rlt1_volume.json",
         runner=run_rlt1_volume,
     ),
+    "rlt1_bundle": ModuleSpec(
+        name="rlt1_bundle",
+        kind="cpp",
+        workdir=ROOT / "cpp/modules/rlt1_bundle",
+        binary=ROOT / "cpp/modules/rlt1_bundle/rlt1_bundle_solver",
+        build_cmd=["make"],
+        default_config=ROOT / "configs/rlt1_bundle.json",
+        runner=run_rlt1_bundle,
+    ),
+    "rlt1_cg": ModuleSpec(
+        name="rlt1_cg",
+        kind="cpp",
+        workdir=ROOT / "cpp/modules/rlt1_cg",
+        binary=ROOT / "cpp/modules/rlt1_cg/rlt1_cg",
+        build_cmd=["make"],
+        default_config=ROOT / "configs/rlt1_cg.json",
+        runner=run_RLT1_cg,
+    ),
+    "rlt1_cg_gurobi": ModuleSpec(
+        name="rlt1_cg_gurobi",
+        kind="cpp",
+        workdir=ROOT / "cpp/modules/rlt1_cg_gurobi",
+        binary=ROOT / "cpp/modules/rlt1_cg_gurobi/rlt1_cg",
+        build_cmd=["make"],
+        default_config=ROOT / "configs/rlt1_cg_gurobi.json",
+        runner=run_RLT1_cg_gurobi,
+    ),
     "m4_volume": ModuleSpec(
         name="m4_volume",
         kind="cpp",
@@ -1040,6 +1852,52 @@ MODULES: Dict[str, ModuleSpec] = {
         workdir=ROOT,
         default_config=ROOT / "configs/rlt1_cplex.json",
         runner=run_rlt1_cplex,
+    ),
+    "rlt1_cplex_reduction_IV": ModuleSpec(
+        name="rlt1_cplex_reduction_IV",
+        kind="python",
+        workdir=ROOT,
+        default_config=ROOT / "configs/rlt1_cplex_reduction_IV.json",
+        runner=run_rlt1_cplex_reduction_IV,
+    ),
+    "rlt1_gurobi": ModuleSpec(
+        name="rlt1_gurobi",
+        kind="python",
+        workdir=ROOT,
+        default_config=ROOT / "configs/rlt1_gurobi.json",
+        runner=run_rlt1_gurobi,
+    ),
+    "rlt1_gurobi_cpp": ModuleSpec(
+        name="rlt1_gurobi_cpp",
+        kind="cpp",
+        workdir=ROOT / "cpp/modules/rlt1_gurobi",
+        binary=ROOT / "cpp/modules/rlt1_gurobi/rlt1_gurobi_solver",
+        build_cmd=["make"],
+        default_config=ROOT / "configs/rlt1_gurobi_cpp.json",
+        runner=run_rlt1_gurobi_cpp,
+    ),
+    "rlt1_gurobi_reduction_IV": ModuleSpec(
+        name="rlt1_gurobi_reduction_IV",
+        kind="python",
+        workdir=ROOT,
+        default_config=ROOT / "configs/rlt1_gurobi_reduction_IV.json",
+        runner=run_rlt1_gurobi_reduction_IV,
+    ),
+    "rlt1_gurobi_reduction_IV_cpp_2": ModuleSpec(
+        name="rlt1_gurobi_reduction_IV_cpp_2",
+        kind="cpp",
+        workdir=ROOT / "cpp/modules/rlt1_gurobi_reduction_IV_2",
+        binary=ROOT / "cpp/modules/rlt1_gurobi_reduction_IV_2/rlt1_gurobi_reduction_IV_solver",
+        build_cmd=["make"],
+        default_config=ROOT / "configs/rlt1_gurobi_reduction_IV_cpp_2.json",
+        runner=run_rlt1_gurobi_reduction_IV_cpp_2,
+    ),
+    "rlt1_sdp": ModuleSpec(
+        name="rlt1_sdp",
+        kind="python",
+        workdir=ROOT,
+        default_config=ROOT / "configs/rlt1_sdp.json",
+        runner=run_rlt1_sdp,
     ),
     "m5_cplex": ModuleSpec(
         name="m5_cplex",
@@ -1115,6 +1973,45 @@ MODULES: Dict[str, ModuleSpec] = {
         default_config=ROOT / "configs/sfd.json",
         runner=run_sfd_cplex,
     ),
+    "sfd_gurobi": ModuleSpec(
+        name="sfd_gurobi",
+        kind="python",
+        workdir=ROOT,
+        default_config=ROOT / "configs/sfd_gurobi.json",
+        runner=run_sfd_gurobi,
+    ),
+    "sfd_gurobi_cpp": ModuleSpec(
+        name="sfd_gurobi_cpp",
+        kind="cpp",
+        workdir=ROOT / "cpp/modules/sfd_gurobi",
+        binary=ROOT / "cpp/modules/sfd_gurobi/sfd_gurobi_solver",
+        build_cmd=["make"],
+        default_config=ROOT / "configs/sfd_gurobi_cpp.json",
+        runner=run_sfd_gurobi_cpp,
+    ),
+    "sfd_sdp": ModuleSpec(
+        name="sfd_sdp",
+        kind="python",
+        workdir=ROOT,
+        default_config=ROOT / "configs/sfd_sdp.json",
+        runner=run_sfd_sdp,
+    ),
+    "sfb_gurobi": ModuleSpec(
+        name="sfb_gurobi",
+        kind="python",
+        workdir=ROOT,
+        default_config=ROOT / "configs/sfb_gurobi.json",
+        runner=run_sfb_gurobi,
+    ),
+    "KBXY_gurobi_cpp": ModuleSpec(
+        name="KBXY_gurobi_cpp",
+        kind="cpp",
+        workdir=ROOT / "cpp/modules/KBXY_gurobi",
+        binary=ROOT / "cpp/modules/KBXY_gurobi/KBXY_gurobi_solver",
+        build_cmd=["make"],
+        default_config=ROOT / "configs/KBXY_gurobi_cpp.json",
+        runner=run_KBXY_gurobi_cpp,
+    ),
     "local_search": ModuleSpec(
         name="local_search",
         kind="cpp",
@@ -1123,6 +2020,22 @@ MODULES: Dict[str, ModuleSpec] = {
         build_cmd=["make"],
         default_config=ROOT / "configs/local_search.json",
         runner=run_local_search,
+    ),
+    "local_search_modify": ModuleSpec(
+        name="local_search_modify",
+        kind="cpp",
+        workdir=ROOT / "cpp/modules/local_search_modify",
+        binary=ROOT / "cpp/modules/local_search_modify/local_search_solver",
+        build_cmd=["make"],
+        default_config=ROOT / "configs/local_search_modify.json",
+        runner=run_local_search_modify,
+    ),
+    "local_search_python": ModuleSpec(
+        name="local_search_python",
+        kind="python",
+        workdir=ROOT,
+        default_config=ROOT / "configs/local_search_python.json",
+        runner=run_local_search_python,
     ),
     "m4_formulation": ModuleSpec(
         name="m4_formulation",
@@ -1146,6 +2059,13 @@ MODULES: Dict[str, ModuleSpec] = {
         workdir=ROOT,
         default_config=ROOT / "configs/qap_cplex.json",
         runner=run_qap_cplex,  # Reuse qap_cplex runner since it's a similar CPLEX-based solver
+    ),
+    "qap_gurobi": ModuleSpec(
+        name="qap_gurobi",
+        kind="python",
+        workdir=ROOT,
+        default_config=ROOT / "configs/qap_gurobi.json",
+        runner=run_qap_gurobi,  # Reuse qap_gurobi runner since it's a similar Gurobi-based solver
     ),
     "cg_va": ModuleSpec(
         name="cg_va",
@@ -1172,8 +2092,63 @@ MODULES: Dict[str, ModuleSpec] = {
         default_config=ROOT / "configs/admm.json",
         runner=run_admm,
     ),
-}
+    "csdp": ModuleSpec(
+        name="c_sdp_admm",
+        kind="python",
+        workdir=ROOT,
+        default_config=ROOT / "configs/csdp.json",
+        runner=run_csdp,
+    ),
+    "csdp_cvxpy": ModuleSpec(
+        name="c_sdp_cvxpy",
+        kind="python",
+        workdir=ROOT,
+        default_config=ROOT / "configs/csdp_cvxpy.json",
+        runner=run_csdp_cvxpy,
+    ),
+    "usbs": ModuleSpec(
+        name="usbs",
+        kind="python",
+        workdir=ROOT,
+        default_config=ROOT / "configs/usbs.json",
+        runner=run_usbs,
+    ),
+    "sdp_pytorch": ModuleSpec(
+        name="sdp_pytorch",
+        kind="python",
+        workdir=ROOT,
+        default_config=ROOT / "configs/sdp_pytorch.json",
+        runner=run_sdp_pytorch,
+    ),
+    "sdp_bundle": ModuleSpec(
+        name="sdp_bundle",
+        kind="cpp",
+        workdir=ROOT / "cpp/modules/sdp_bundle",
+        binary=ROOT / "cpp/modules/sdp_bundle/sdp_bundle_solver",
+        build_cmd=["make"],
+        default_config=ROOT / "configs/sdp_bundle.json",
+        runner=run_sdp_bundle,
+    ),
+    "sdp_volume": ModuleSpec(
+        name="sdp_volume",
+        kind="cpp",
+        workdir=ROOT / "cpp/modules/sdp_volume",
+        binary=ROOT / "cpp/modules/sdp_volume/sdp_volume_solver",
+        build_cmd=["make"],
+        default_config=ROOT / "configs/sdp_volume.json",
+        runner=run_sdp_volume,
+    ),
+    "sdp_volume_2": ModuleSpec(
+        name="sdp_volume_2",
+        kind="cpp",
+        workdir=ROOT / "cpp/modules/sdp_volume_2",
+        binary=ROOT / "cpp/modules/sdp_volume_2/sdp_volume_solver",
+        build_cmd=["make"],
+        default_config=ROOT / "configs/sdp_volume_2.json",
+        runner=run_sdp_volume_2,
+    ),
 
+}
 
 # CLI ------------------------------------------------------------------------
 
@@ -1203,6 +2178,7 @@ def run_command(subparsers) -> None:
     parser.add_argument("--log", action="store_true", help="Enable solver logging")
     parser.add_argument("--build-first", action="store_true", help="Build before running")
     parser.add_argument("--fixed", help="Fixed variables file (module-specific)")
+    parser.add_argument("--formulation", help="Formulation to use (module-specific)")
 
 
 def parse_args() -> "Args":

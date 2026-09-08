@@ -1,0 +1,11 @@
+{
+  "solver": "rlt1_gurobi_reduction_IV_cpp_2",
+  "formulation": "rlt1_reduced",
+  "instance": "data/M/instance_318_LEFT.txt",
+  "time_limit": 6040800,
+  "threads": 100,
+  "log_output": true,
+  "is_relax": true,
+  "lpmethod": "barrier",
+  "warmstart": ""
+}

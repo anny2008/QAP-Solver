@@ -1,0 +1,8 @@
+{
+  "solver": "qap_gurobi",
+  "instance": "data/generated_QAPLIB_instance/instance_42_40_Manhattan_distance_7x6.dat",
+  "time_limit": 36000,
+  "log_output": true,
+  "is_relax": false,
+  "warmstart": ""
+}

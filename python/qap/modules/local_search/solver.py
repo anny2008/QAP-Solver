@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import random
 import time
+from tqdm import tqdm
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -36,18 +37,36 @@ class LocalSearchSolver:
         rng = random.Random(self.seed)
 
         merged_fixed = self._merge_fixed_variables(problem, fixed_variables)
-
+        print(f"Merged fixed variables: {merged_fixed}")
         assignment = self._initial_assignment(problem, rng, warmstart, merged_fixed)
+        # assignment = [-1] * problem.n
+        # # read inital solution from warmstart
+        # obj = 0
+        # warmstartfile = "/home/local.isima.fr/antran/UFF/QAP-Solver/data/M/instance_318_LEFT.sln"
+        # with open(warmstartfile, "r") as f:
+        #     tokens = f.read().strip().split()
+        #     u = 0
+        #     print(tokens[0], tokens[1])
+        #     for tokens in tokens[2:]:
+        #         i = int(tokens)
+        #         # print(f"Warmstart: location {i} assigned to facility {u}")
+        #         assignment[i] = u
+        #         u += 1
+        #         # print(f"Warmstart: location {i} assigned to facility {assignment[i]}")
         current_obj = problem.evaluate_assignment(assignment)
+        print(f"Initial solution: objective={current_obj:.4f}")
+        # # check if initial solution is valid
+        # for loc, fac in merged_fixed:
+        #     if assignment[loc] != fac:
+        #         print(f"Warning: initial solution does not satisfy fixed variable x[{loc}]={fac} (assigned {assignment[loc]})")
 
-        if self.method in {"tabu", "tabu_search", "two_opt", "local_search"}:
-            assignment, current_obj = self._two_opt_search(
-                problem,
-                assignment,
-                current_obj,
-                start_time,
-                merged_fixed,
-            )
+        current_obj = self._two_opt_search(
+            problem,
+            assignment,
+            current_obj,
+            start_time,
+            merged_fixed,
+        )
 
         elapsed = time.time() - start_time
         return Solution(
@@ -132,9 +151,12 @@ class LocalSearchSolver:
         fixed_variables: Optional[List[Tuple[int, int]]] = None,
     ) -> Tuple[List[int], float]:
         n = problem.n
-        fixed_locs = {loc for loc, _ in (fixed_variables or [])}
+        fixed_locs = {loc: fac for loc, fac in (fixed_variables or [])}
+        print(f"Fixed locations: {fixed_locs}")
         iteration = 0
+        current_obj = problem.evaluate_assignment(assignment)
         while iteration < self.max_iterations:
+            print(f"Iteration {iteration}, objective={current_obj:.4f}")
             if time.time() - start_time > self.time_limit:
                 break
             iteration += 1
@@ -142,36 +164,79 @@ class LocalSearchSolver:
             best_delta = 0.0
             best_move = None
             improved = False
-
-            for i in range(n - 1):
+            # for i in tqdm(range(n)):
+            for i in range(n):
                 if i in fixed_locs:
                     continue
-                for j in range(i + 1, n):
-                    if j in fixed_locs:
+                u = assignment[i]
+                for j in range(n):
+                    if j in fixed_locs or i == j:
                         continue
-                    delta = self._delta_swap(problem, assignment, i, j)
-                    if delta < -self.eps:
-                        if self.local_search_strategy == "first_improvement":
-                            assignment[i], assignment[j] = assignment[j], assignment[i]
-                            current_obj += delta
-                            improved = True
-                            break
-                        if delta < best_delta:
-                            best_delta = delta
-                            best_move = (i, j)
-                if improved and self.local_search_strategy == "first_improvement":
-                    break
+                    v = assignment[j]
+                    if v == u:
+                        continue
+                    # for loc, fac in fixed_locs.items():
+                    #     if assignment[loc] != fac:
+                    #         print(f"Error: before swap, fixed variable x[{loc}]={fac} is violated (assigned {assignment[loc]})")
+                    # for u1 in range(problem.m):
+                    #     found = False
+                    #     for u2 in assignment:
+                    #         if u1 == u2:
+                    #             found = True        
+                    #             break
+                    #     if not found:
+                    #         print(f"Error: before swap, facility {u1} is not assigned to any location")
+                                
+                    print(i,u,j,v)
+                    print(assignment[i], assignment[j])
+                    print(f"Before {assignment}")
+                    new_assignment = assignment.copy()
+                    # swap u and v
+                    new_assignment[i] = v
+                    new_assignment[j] = u
+                    
+                    # check if assignment is still valid (should always be valid since we only swap unfixed locations)
+                    # for loc, fac in fixed_locs.items():
+                    #     if new_assignment[loc] != fac:
+                    #         print(f"Error: after swap, fixed variable x[{loc}]={fac} is violated (assigned {new_assignment[loc]})")
+                    # for u1 in range(problem.m):
+                    #     found = False
+                    #     for u2 in new_assignment:
+                    #         if u1 == u2:
+                    #             found = True        
+                    #             break
+                    #     if not found:
+                    #         print(i,u,j,v)
+                    #         print(new_assignment[i], new_assignment[j])
+                    #         print(f"Error: after swap, facility {u1} is not assigned to any location")
 
-            if self.local_search_strategy != "first_improvement" and best_move is not None:
-                i, j = best_move
-                assignment[i], assignment[j] = assignment[j], assignment[i]
-                current_obj += best_delta
-                improved = True
+                    #         print(f"After {new_assignment}")
+                                
+
+                    # recompute objective
+                    # start_time_comp = time.time()
+                    new_obj = problem.evaluate_assignment(new_assignment)
+                    # elapsed_comp = time.time() - start_time_comp
+                    # print(f"    Swapping locations {i} and {j} changes objective to {new_obj:.4f} (computed in {elapsed_comp:.4f}s)")
+                    if new_obj < current_obj:
+                        print(f"    Swapping locations {i} and {j} improves objective to {current_obj:.4f} -> {new_obj:.4f}")
+                        current_obj = new_obj
+                        improved = True
+                        assignment = new_assignment
+                    else:
+                        # swap back
+                        print(f"    Swapping locations {i} and {j} worsens objective to {current_obj:.4f} -> {new_obj:.4f}, reverting")
+                    
+                        
+                    # else:
+                    #     print(f"    Swapping locations {i} and {j} does not change objective (still {current_obj:.4f} = {new_obj:.4f}), keeping swap")
+                    #     current_obj = new_obj
+                    #     improved = True
 
             if not improved:
                 break
 
-        return assignment, current_obj
+        return current_obj
 
     def _merge_fixed_variables(
         self,

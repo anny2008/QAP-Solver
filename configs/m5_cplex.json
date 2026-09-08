@@ -1,7 +1,7 @@
 {
   "solver": "m5_cplex",
   "formulation": "m5",
-  "instance": "/home/local.isima.fr/antran/UFF/QAP-Solver/data/M/instance_02_LEFT.txt",
+  "instance": "/home/local.isima.fr/antran/UFF/QAP-Solver/data/M/instance_02_2_LEFT.txt",
   "time_limit": 120,
   "threads": 8,
   "log_output": true,

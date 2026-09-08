@@ -81,8 +81,6 @@ def ADMM_QAP(L, Vhat, J, opts):
         Y[J] = 0
         Y[0, 0] = 1
         Y = np.clip(Y, 0, 1)
-        Y[J] = 0
-        Y[0, 0] = 1
 
         # Step 3: update Z
         pR = Y - VRV
